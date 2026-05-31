@@ -1,0 +1,28 @@
+# Build artifacts
+/target/
+**/target/
+*.protein
+*.tar.zst
+*.tar.xz
+*.tar.gz
+
+# IDE
+.idea/
+.vscode/
+.cursor/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Ribosome build cache
+/var/ribosome/
+vacuole/
+
+# Temporary build files
+/tmp/
+*.tmp
+*.log

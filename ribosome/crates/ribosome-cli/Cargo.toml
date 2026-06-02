@@ -1,0 +1,17 @@
+[package]
+name = "ribosome-cli"
+description = "Command-line interface for the Ribosome build engine"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+ribosome-core = { path = "../ribosome-core" }
+clap = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+tokio = { workspace = true }

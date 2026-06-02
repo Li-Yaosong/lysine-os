@@ -1,0 +1,17 @@
+[package]
+name = "ribosome-snapshot"
+description = "Mitosis system snapshot management for Ribosome"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+ribosome-core = { path = "../ribosome-core" }
+serde = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+chrono = "0.4"

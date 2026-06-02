@@ -1,0 +1,24 @@
+[package]
+name = "lysin"
+description = "Package manager CLI for LysineOS"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[[bin]]
+name = "lysin"
+path = "src/main.rs"
+
+[dependencies]
+ribosome-core = { path = "../ribosome-core" }
+ribosome-package = { path = "../ribosome-package" }
+ribosome-repository = { path = "../ribosome-repository" }
+ribosome-snapshot = { path = "../ribosome-snapshot" }
+clap = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+tokio = { workspace = true }

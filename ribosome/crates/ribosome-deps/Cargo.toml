@@ -1,0 +1,15 @@
+[package]
+name = "ribosome-deps"
+description = "Genome dependency graph engine for Ribosome"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+ribosome-core = { path = "../ribosome-core" }
+petgraph = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }

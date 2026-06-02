@@ -1,0 +1,19 @@
+[package]
+name = "ribosome-package"
+description = ".protein package format handling for Ribosome"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+ribosome-core = { path = "../ribosome-core" }
+serde = { workspace = true }
+sha2 = { workspace = true }
+tar = { workspace = true }
+zstd = { workspace = true }
+walkdir = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }

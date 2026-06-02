@@ -1,0 +1,111 @@
+name: CI
+
+on:
+  push:
+    branches: [main, staging, 'phase/*']
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_VERSION: "1.90"
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+          components: rustfmt, clippy
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ribosome/target
+          key: lint-${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            lint-${{ runner.os }}-cargo-
+
+      - name: Check formatting
+        working-directory: ribosome
+        run: cargo fmt --check --all
+
+      - name: Run clippy
+        working-directory: ribosome
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+  check:
+    name: Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ribosome/target
+          key: check-${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            check-${{ runner.os }}-cargo-
+
+      - name: Check compilation
+        working-directory: ribosome
+        run: cargo check --all-features
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ribosome/target
+          key: test-${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            test-${{ runner.os }}-cargo-
+
+      - name: Run tests
+        working-directory: ribosome
+        run: cargo test --all
+
+  dev-env:
+    name: Dev Environment
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build dev container
+        run: docker build -t lysine-dev:phase0 -f .devcontainer/Dockerfile .
+
+      - name: Test Rust compilation in container
+        run: |
+          docker run --rm \
+            -v ${{ github.workspace }}/ribosome:/workspace/ribosome \
+            lysine-dev:phase0 \
+            cargo check --manifest-path /workspace/ribosome/Cargo.toml

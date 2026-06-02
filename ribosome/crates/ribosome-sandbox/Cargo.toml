@@ -1,0 +1,15 @@
+[package]
+name = "ribosome-sandbox"
+description = "Membrane build sandbox management for Ribosome"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+ribosome-core = { path = "../ribosome-core" }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }

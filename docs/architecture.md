@@ -452,7 +452,7 @@ keep-weekly = 4
 
 ### 1.8 Ribosome 技术依赖
 
-Rust 1.80+、libarchive（tar/zst）、libsodium（哈希与签名）、libbtrfs（快照管理）、systemd（systemd-nspawn 沙箱）。
+Rust 1.90+、libarchive（tar/zst）、libsodium（哈希与签名）、libbtrfs（快照管理）、systemd（systemd-nspawn 沙箱）。
 
 ---
 
@@ -742,7 +742,7 @@ Step 4: ribosome build --target iso
 
 ## 九、开发环境建议
 
-1. **主开发机**：物理机（Ubuntu 24.04+），用于编译和测试
+1. **主开发机**：物理机（Ubuntu 22.04+），用于编译和测试
 2. **虚拟化测试**：QEMU/KVM 用于测试引导和运行系统
 3. **容器化构建**：Docker 用于可复现的构建环境
 4. **当前仓库**：存放所有源码、配置、脚本和文档

@@ -26,3 +26,9 @@ vacuole/
 /tmp/
 *.tmp
 *.log
+
+# Cargo
+Cargo.lock
+
+# Docker
+.devcontainer/docker-compose*.yml

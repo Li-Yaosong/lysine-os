@@ -18,7 +18,10 @@ ENV RUST_VERSION=1.90
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- \
     -y --default-toolchain ${RUST_VERSION} \
     --profile default \
-    --component rustfmt clippy rust-src rust-analyzer
+    --component rustfmt \
+    --component clippy \
+    --component rust-src \
+    --component rust-analyzer
 
 ENV PATH="/root/.cargo/bin:${PATH}"
 

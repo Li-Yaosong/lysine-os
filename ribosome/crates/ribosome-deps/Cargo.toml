@@ -10,6 +10,8 @@ authors.workspace = true
 
 [dependencies]
 ribosome-core = { path = "../ribosome-core" }
+ribosome-parser = { path = "../ribosome-parser" }
 petgraph = { workspace = true }
 thiserror = { workspace = true }
 anyhow = { workspace = true }
+walkdir = { workspace = true }

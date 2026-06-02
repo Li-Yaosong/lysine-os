@@ -1,0 +1,65 @@
+api-version: 1
+name: systemd
+version: "257"
+release: 1
+
+description: System and service manager
+homepage: https://github.com/systemd/systemd
+license: GPL-2.0-or-later AND LGPL-2.1-or-later
+
+depends:
+  build:
+    - gcc
+    - glibc
+    - openssl
+    - python3
+    - meson
+    - ninja
+    - libcap
+    - libxcrypt
+    - kmod
+    - util-linux
+  runtime:
+    - glibc
+    - libcap
+    - libxcrypt
+    - kmod
+    - util-linux
+
+features:
+  default: []
+  options:
+    udev:
+      description: Enable udev device manager
+    resolved:
+      description: Enable systemd-resolved DNS resolver
+    networkd:
+      description: Enable systemd-networkd network manager
+    homed:
+      description: Enable systemd-homed home directory manager
+
+sources:
+  - url: https://github.com/systemd/systemd/archive/refs/tags/v257.tar.gz
+    hash: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+
+build:
+  prepare: |
+    mkdir -v build && cd build
+    meson setup .. \
+      --prefix=/usr \
+      --buildtype=release \
+      -Dmode=release \
+      -Ddev-kvm-mode=0660
+  compile: |
+    ninja -j$(nproc)
+  install: |
+    DESTDIR="$DESTDIR" ninja install
+
+post-install: |
+  systemctl preset-all
+
+maintainer: LysineOS Team <team@lysine-os.org>
+tags:
+  - init
+  - system
+  - core

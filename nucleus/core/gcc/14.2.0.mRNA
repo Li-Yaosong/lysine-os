@@ -1,0 +1,92 @@
+api-version: 1
+name: gcc
+version: 14.2.0
+release: 1
+
+description: GNU Compiler Collection
+homepage: https://gcc.gnu.org/
+license: GPL-3.0-or-later
+
+depends:
+  build:
+    - binutils >= 2.42
+    - glibc >= 2.39
+    - gmp
+    - mpfr
+    - mpc
+  runtime:
+    - glibc >= 2.39
+    - binutils >= 2.42
+
+features:
+  default:
+    - cxx
+    - fortran
+    - objc
+  options:
+    cxx:
+      description: C++ language support
+    fortran:
+      description: Fortran language support
+    objc:
+      description: Objective-C language support
+    dlang:
+      description: D language support
+      depends:
+        - gdc
+    go:
+      description: Go language support
+    lto:
+      description: Link-time optimization support
+      cflags: -flto=auto
+
+sources:
+  - url: https://ftp.gnu.org/gnu/gcc/gcc-14.2.0/gcc-14.2.0.tar.xz
+    hash: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+
+patches:
+  - fix-build-with-glibc-2.40.patch
+
+build:
+  prepare: |
+    mkdir -v build && cd build
+    ../configure --prefix=/usr \
+      --enable-languages=c,c++,fortran,objc \
+      --disable-multilib \
+      --disable-werror \
+      --enable-threads=posix \
+      --with-system-zlib
+  compile: |
+    make -j$(nproc)
+  check: |
+    make -j$(nproc) -k check || true
+  install: |
+    make DESTDIR="$DESTDIR" install
+    rm -rf "$DESTDIR/usr/lib/gcc"/*/{include-fixed/bits,install-tools}
+
+post-install: |
+  ldconfig
+
+outputs:
+  main:
+    description: GNU Compiler Collection
+  lib:
+    description: GCC runtime libraries
+    files:
+      - /usr/lib/libgcc_s.so*
+      - /usr/lib/libstdc++.so*
+      - /usr/lib/libgfortran.so*
+      - /usr/lib/libobjc.so*
+  dev:
+    description: GCC development files
+    files:
+      - /usr/include/c++/**
+      - /usr/lib/libstdc++.a
+      - /usr/lib/libgcc.a
+      - /usr/lib/libgfortran.a
+
+maintainer: LysineOS Team <team@lysine-os.org>
+tags:
+  - compiler
+  - development
+  - core

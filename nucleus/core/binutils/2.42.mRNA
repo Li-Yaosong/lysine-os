@@ -1,0 +1,44 @@
+api-version: 1
+name: binutils
+version: 2.42
+release: 1
+
+description: GNU binary utilities
+homepage: https://www.gnu.org/software/binutils/
+license: GPL-3.0-or-later
+
+depends:
+  build:
+    - glibc >= 2.39
+  runtime:
+    - glibc >= 2.39
+
+features:
+  default: []
+  options:
+    gold:
+      description: Enable GOLD linker
+    lto:
+      description: Link-time optimization support
+      cflags: -flto=auto
+
+sources:
+  - url: https://ftp.gnu.org/gnu/binutils/binutils-2.42.tar.xz
+    hash: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+  - url: https://ftp.gnu.org/gnu/binutils/binutils-2.42.tar.xz.sig
+    signature: gpg
+    key-id: 13FCEF89DD9E3C4A
+
+build:
+  prepare: |
+    mkdir -v build && cd build
+    ../configure --prefix=/usr \
+      --enable-gold \
+      --enable-ld=default \
+      --enable-plugins \
+      --enable-shared \
+      --disable-werror
+  compile: |
+    make -j$(nproc)
+  install: |
+    make DESTDIR="$DESTDIR" install

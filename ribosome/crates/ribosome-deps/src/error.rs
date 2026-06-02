@@ -8,6 +8,9 @@ pub enum DepsError {
 
     #[error("conflict: {0}")]
     Conflict(String),
+
+    #[error("failed to parse mRNA {path}: {reason}")]
+    Parse { path: String, reason: String },
 }
 
 pub type Result<T> = std::result::Result<T, DepsError>;

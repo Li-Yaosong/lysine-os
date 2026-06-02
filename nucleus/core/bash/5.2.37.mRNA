@@ -1,0 +1,33 @@
+api-version: 1
+name: bash
+version: 5.2.37
+release: 1
+
+description: Bourne Again Shell
+homepage: https://www.gnu.org/software/bash/
+license: GPL-3.0-or-later
+
+depends:
+  runtime:
+    - glibc
+    - ncurses
+
+sources:
+  - url: https://ftp.gnu.org/gnu/bash/bash-5.2.37.tar.gz
+    hash: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+
+patches:
+  - bash-5.2.37-upstream-fixes-1.patch
+
+build:
+  prepare: |
+    ./configure --prefix=/usr \
+      --docdir=/usr/share/doc/bash-5.2.37 \
+      --without-bash-malloc \
+      --with-installed-readline
+  compile: |
+    make -j$(nproc)
+  check: |
+    chown -Rv tester . && su -s /usr/bin/expect tester -c "spawn make -j$(nproc) TESTSCRIPT=/dev/null tests"
+  install: |
+    make DESTDIR="$DESTDIR" install

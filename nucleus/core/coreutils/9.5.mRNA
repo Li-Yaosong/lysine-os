@@ -1,0 +1,30 @@
+api-version: 1
+name: coreutils
+version: 9.5
+release: 1
+
+description: Basic file, shell and text manipulation utilities
+homepage: https://www.gnu.org/software/coreutils/
+license: GPL-3.0-or-later
+
+depends:
+  runtime:
+    - glibc
+    - acl
+    - attr
+    - libcap
+
+sources:
+  - url: https://ftp.gnu.org/gnu/coreutils/coreutils-9.5.tar.xz
+    hash: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+
+build:
+  prepare: |
+    ./configure --prefix=/usr \
+      --enable-no-install-program=kill,uptime
+  compile: |
+    make -j$(nproc)
+  check: |
+    make -j$(nproc) NON_ROOT_USERNAME=tester check-root
+  install: |
+    make DESTDIR="$DESTDIR" install

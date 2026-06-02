@@ -1,0 +1,46 @@
+api-version: 1
+name: ncurses
+version: 6.5
+release: 1
+
+description: Terminal handling library
+homepage: https://invisible-island.net/ncurses/
+license: MIT
+
+depends:
+  runtime:
+    - glibc
+
+sources:
+  - url: https://invisible-mirror.net/archives/ncurses/ncurses-6.5.tar.gz
+    hash: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+
+build:
+  prepare: |
+    ./configure --prefix=/usr \
+      --mandir=/usr/share/man \
+      --with-shared \
+      --without-debug \
+      --without-ada \
+      --with-normal \
+      --enable-pc-files \
+      --with-pkg-config-libdir=/usr/lib/pkgconfig
+  compile: |
+    make -j$(nproc)
+  install: |
+    make DESTDIR="$DESTDIR" install
+
+outputs:
+  main:
+    description: NCurses terminal library
+  lib:
+    description: NCurses shared libraries
+    files:
+      - /usr/lib/libncurses*.so*
+      - /usr/lib/libncurses*.so
+  dev:
+    description: NCurses development files
+    files:
+      - /usr/include/ncurses/**
+      - /usr/include/ncurses.h
+      - /usr/lib/libncurses*.a

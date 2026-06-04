@@ -7,6 +7,14 @@ use crate::context::{BuildContext, BuildPhase, BuildResult, PhaseResult};
 use crate::error::{CoreError, Result};
 
 /// Drives the four-phase build lifecycle from a parsed mRNA.
+///
+/// **SAFETY NOTICE (Sprint 1):**
+/// Build scripts execute directly on the host via `bash -e -c` with **no sandboxing**.
+/// The membrane isolation layer (Linux namespaces + cgroups + Btrfs subvolume) is
+/// planned for Sprint 3. Until then, **only run `ribosome build` with trusted mRNA
+/// files** on development machines — never in CI or shared environments.
+///
+/// Sprint 1 does NOT perform: source fetching, patch application, or network isolation.
 pub struct BuildExecutor;
 
 impl BuildExecutor {
@@ -23,6 +31,14 @@ impl BuildExecutor {
         info!(package = %package, version = %version, "starting build");
 
         ctx.create_dirs()?;
+
+        // Defensive: reject mRNA without build block (should have been caught by parser)
+        if ctx.mrna.build.is_none() {
+            return Err(CoreError::BuildFailed {
+                package: package.clone(),
+                reason: "mRNA must contain a build block (at minimum an install step)".to_string(),
+            });
+        }
 
         // Initialise transcript file
         let mut transcript = std::fs::OpenOptions::new()
@@ -65,6 +81,7 @@ impl BuildExecutor {
                     dest_dir: ctx.dest_dir(),
                     total_duration: total,
                     protein: None,
+                    pack_error: None,
                 });
             }
             phase_results.push(result);
@@ -75,23 +92,31 @@ impl BuildExecutor {
             package = %package,
             version = %version,
             elapsed = ?total,
-            "build completed successfully"
+            "build phases completed successfully"
         );
 
         // Auto-pack into .protein
-        let protein = Self::pack_result(ctx, &total).map_err(|e| {
-            warn!(error = %e, "packing failed");
-            e
-        }).ok();
+        let (protein, pack_error) = match Self::pack_result(ctx, &total) {
+            Ok(p) => (Some(p), None),
+            Err(e) => {
+                let msg = format!("{e}");
+                warn!(error = %msg, "packing failed — build phases succeeded but .protein was not created");
+                (None, Some(msg))
+            }
+        };
+
+        // Packing failure means the overall build is not fully successful
+        let success = pack_error.is_none();
 
         Ok(BuildResult {
             package,
             version,
-            success: true,
+            success,
             phases: phase_results,
             dest_dir: ctx.dest_dir(),
             total_duration: total,
             protein,
+            pack_error,
         })
     }
 

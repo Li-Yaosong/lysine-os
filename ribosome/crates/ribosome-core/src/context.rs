@@ -165,8 +165,11 @@ pub struct BuildResult {
     pub phases: Vec<PhaseResult>,
     pub dest_dir: PathBuf,
     pub total_duration: std::time::Duration,
-    /// .protein package output, if build succeeded and pack was requested.
+    /// .protein package output, if build succeeded and pack succeeded.
     pub protein: Option<ProteinOutput>,
+    /// Error message when the build phases succeeded but packing failed.
+    /// When present, `success` is `false` and `protein` is `None`.
+    pub pack_error: Option<String>,
 }
 
 /// Information about the produced .protein package.

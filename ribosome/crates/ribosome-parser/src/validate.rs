@@ -138,8 +138,14 @@ fn validate_sources(mrna: &MrnaFile, issues: &mut Vec<ValidationIssue>) {
 }
 
 fn validate_build(mrna: &MrnaFile, issues: &mut Vec<ValidationIssue>) {
-    if let Some(build) = &mrna.build {
-        match &build.install {
+    match &mrna.build {
+        None => {
+            issues.push(ValidationIssue::error(
+                "build",
+                "build block is required (must include at least an install step)",
+            ));
+        }
+        Some(build) => match &build.install {
             None => issues.push(ValidationIssue::error(
                 "build.install",
                 "install step is required when build block is present",
@@ -149,7 +155,7 @@ fn validate_build(mrna: &MrnaFile, issues: &mut Vec<ValidationIssue>) {
                 "install step must not be empty",
             )),
             _ => {}
-        }
+        },
     }
 }
 
@@ -574,10 +580,10 @@ mod tests {
     }
 
     #[test]
-    fn v11_no_build_block_ok() {
+    fn v11_no_build_block_rejected() {
         let mut mrna = base_mrna();
         mrna.build = None;
-        assert!(!has_error(&mrna, "build.install"));
+        assert!(has_error(&mrna, "build"));
     }
 
     // V12: depends format must be parseable

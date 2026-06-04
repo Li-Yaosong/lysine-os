@@ -191,6 +191,10 @@ fn cmd_build(mrna_path: &Path, build_root: &Path, jobs: Option<usize>) -> Result
     let label = format!("{}-{}", mrna.name, mrna.version);
     tracing::info!("building {label}");
 
+    // Sprint 1 safety warning: no sandbox
+    eprintln!("\x1b[33m[WARN] Sprint 1 executes build scripts directly on host (no membrane sandbox).\x1b[0m");
+    eprintln!("\x1b[33m        Only build trusted mRNA files on development machines.\x1b[0m\n");
+
     let mut config = ribosome_core::BuildConfig::new(build_root);
     if let Some(j) = jobs {
         config.jobs = j;
@@ -228,6 +232,11 @@ fn cmd_build(mrna_path: &Path, build_root: &Path, jobs: Option<usize>) -> Result
             );
         }
         Ok(())
+    } else if let Some(pack_err) = &result.pack_error {
+        bail!(
+            "[FAIL] {} — build phases succeeded but packing failed: {pack_err}",
+            result.package
+        );
     } else {
         bail!(
             "[FAIL] {} — build did not complete successfully",

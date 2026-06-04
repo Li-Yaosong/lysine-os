@@ -70,9 +70,11 @@ fn main() -> ExitCode {
 fn run() -> Result<()> {
     let cli = Cli::parse();
     match cli.command {
-        Commands::Build { package, build_root, jobs } => {
-            cmd_build(&package, &build_root, jobs)
-        }
+        Commands::Build {
+            package,
+            build_root,
+            jobs,
+        } => cmd_build(&package, &build_root, jobs),
         Commands::Shell { package } => {
             tracing::info!("Entering sandbox for: {package}");
             bail!("shell not implemented in Sprint 1");

@@ -80,7 +80,10 @@ fn valid_fixtures_all_parse() {
         assert!(!mrna.name.is_empty(), "{} has empty name", path.display());
         tested += 1;
     }
-    assert!(tested >= 3, "expected at least 3 valid fixtures, got {tested}");
+    assert!(
+        tested >= 3,
+        "expected at least 3 valid fixtures, got {tested}"
+    );
 }
 
 #[test]
@@ -101,14 +104,19 @@ fn invalid_fixtures_all_fail() {
         );
         if let Err(ParserError::Validation { issues }) = &result {
             assert!(
-                issues.iter().any(|i| matches!(i.severity, ribosome_parser::Severity::Error)),
+                issues
+                    .iter()
+                    .any(|i| matches!(i.severity, ribosome_parser::Severity::Error)),
                 "{} should have at least one Error-level issue",
                 path.display()
             );
         }
         tested += 1;
     }
-    assert!(tested >= 3, "expected at least 3 invalid fixtures, got {tested}");
+    assert!(
+        tested >= 3,
+        "expected at least 3 invalid fixtures, got {tested}"
+    );
 }
 
 #[test]
@@ -118,6 +126,12 @@ fn invalid_multi_error_has_multiple_errors() {
     let ParserError::Validation { issues } = &err else {
         panic!("expected validation error");
     };
-    let error_count = issues.iter().filter(|i| matches!(i.severity, ribosome_parser::Severity::Error)).count();
-    assert!(error_count >= 5, "expected at least 5 errors, got {error_count}");
+    let error_count = issues
+        .iter()
+        .filter(|i| matches!(i.severity, ribosome_parser::Severity::Error))
+        .count();
+    assert!(
+        error_count >= 5,
+        "expected at least 5 errors, got {error_count}"
+    );
 }

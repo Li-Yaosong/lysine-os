@@ -52,10 +52,22 @@ impl BuildExecutor {
 
         let build_script = ctx.mrna.build.as_ref();
         let phases: Vec<(BuildPhase, Option<&str>)> = vec![
-            (BuildPhase::Prepare, build_script.and_then(|b| b.prepare.as_deref())),
-            (BuildPhase::Compile, build_script.and_then(|b| b.compile.as_deref())),
-            (BuildPhase::Check,   build_script.and_then(|b| b.check.as_deref())),
-            (BuildPhase::Install, build_script.and_then(|b| b.install.as_deref())),
+            (
+                BuildPhase::Prepare,
+                build_script.and_then(|b| b.prepare.as_deref()),
+            ),
+            (
+                BuildPhase::Compile,
+                build_script.and_then(|b| b.compile.as_deref()),
+            ),
+            (
+                BuildPhase::Check,
+                build_script.and_then(|b| b.check.as_deref()),
+            ),
+            (
+                BuildPhase::Install,
+                build_script.and_then(|b| b.install.as_deref()),
+            ),
         ];
 
         let mut phase_results = Vec::new();
@@ -120,20 +132,26 @@ impl BuildExecutor {
         })
     }
 
-    fn pack_result(ctx: &BuildContext, duration: &std::time::Duration) -> crate::Result<super::ProteinOutput> {
+    fn pack_result(
+        ctx: &BuildContext,
+        duration: &std::time::Duration,
+    ) -> crate::Result<super::ProteinOutput> {
         use ribosome_package::{pack, PackageMeta};
 
-        let mrna_yaml = serde_yaml::to_string(&ctx.mrna)
-            .map_err(|e| CoreError::BuildFailed {
-                package: ctx.mrna.name.clone(),
-                reason: format!("failed to serialize mRNA: {e}"),
-            })?;
+        let mrna_yaml = serde_yaml::to_string(&ctx.mrna).map_err(|e| CoreError::BuildFailed {
+            package: ctx.mrna.name.clone(),
+            reason: format!("failed to serialize mRNA: {e}"),
+        })?;
 
         let mut depends_build = Vec::new();
         let mut depends_runtime = Vec::new();
         if let Some(dep) = &ctx.mrna.depends {
-            if let Some(b) = &dep.build { depends_build = b.clone(); }
-            if let Some(r) = &dep.runtime { depends_runtime = r.clone(); }
+            if let Some(b) = &dep.build {
+                depends_build = b.clone();
+            }
+            if let Some(r) = &dep.runtime {
+                depends_runtime = r.clone();
+            }
         }
 
         let meta = PackageMeta {
@@ -149,11 +167,12 @@ impl BuildExecutor {
             build_duration: *duration,
         };
 
-        let pack_result = pack(&ctx.dest_dir(), &meta, &ctx.config.cache_dir)
-            .map_err(|e| CoreError::BuildFailed {
+        let pack_result = pack(&ctx.dest_dir(), &meta, &ctx.config.cache_dir).map_err(|e| {
+            CoreError::BuildFailed {
                 package: ctx.mrna.name.clone(),
                 reason: format!("packing failed: {e}"),
-            })?;
+            }
+        })?;
 
         Ok(super::ProteinOutput {
             path: pack_result.path,
@@ -173,13 +192,8 @@ impl BuildExecutor {
         let phase_start = std::time::Instant::now();
         info!(phase = %phase, "executing");
 
-        writeln!(
-            transcript,
-            "\n--- phase: {} ({}) ---",
-            phase,
-            chrono_now()
-        )
-        .map_err(|e| CoreError::io(ctx.transcript_path(), e.to_string()))?;
+        writeln!(transcript, "\n--- phase: {} ({}) ---", phase, chrono_now())
+            .map_err(|e| CoreError::io(ctx.transcript_path(), e.to_string()))?;
 
         let working_dir = match phase {
             BuildPhase::Prepare => ctx.src_dir(),
@@ -198,13 +212,11 @@ impl BuildExecutor {
             cmd.env(key, value);
         }
 
-        let output = cmd
-            .output()
-            .map_err(|e| CoreError::CommandFailed {
-                package: ctx.mrna.name.clone(),
-                phase: phase.to_string(),
-                message: format!("failed to spawn bash: {e}"),
-            })?;
+        let output = cmd.output().map_err(|e| CoreError::CommandFailed {
+            package: ctx.mrna.name.clone(),
+            phase: phase.to_string(),
+            message: format!("failed to spawn bash: {e}"),
+        })?;
 
         let stdout = String::from_utf8_lossy(&output.stdout);
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -252,7 +264,7 @@ fn chrono_now() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{BuildContext, BuildConfig, BuildExecutor};
+    use crate::{BuildConfig, BuildContext, BuildExecutor};
     use ribosome_parser::{parse_mrna, MrnaFile};
 
     fn minimal_mrna() -> MrnaFile {
@@ -335,10 +347,16 @@ build:
 
         // Verify transcript was written
         let transcript = std::fs::read_to_string(ctx.transcript_path()).expect("read transcript");
-        assert!(transcript.contains("ribosome build"), "transcript should have header");
+        assert!(
+            transcript.contains("ribosome build"),
+            "transcript should have header"
+        );
 
         // Verify .protein was created
-        assert!(result.protein.is_some(), "protein should be packed after successful build");
+        assert!(
+            result.protein.is_some(),
+            "protein should be packed after successful build"
+        );
         let protein = result.protein.as_ref().unwrap();
         assert!(protein.path.exists(), ".protein file should exist");
         assert!(protein.sha256.starts_with("sha256:"));

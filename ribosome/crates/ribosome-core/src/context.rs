@@ -89,10 +89,9 @@ pub struct BuildContext {
 
 impl BuildContext {
     pub fn new(mrna: MrnaFile, config: BuildConfig) -> Self {
-        let base_dir = config.build_root.join(format!(
-            "{}-{}",
-            mrna.name, mrna.version
-        ));
+        let base_dir = config
+            .build_root
+            .join(format!("{}-{}", mrna.name, mrna.version));
         Self {
             mrna,
             config,

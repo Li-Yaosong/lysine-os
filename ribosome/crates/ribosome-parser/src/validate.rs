@@ -315,7 +315,10 @@ mod tests {
             features: None,
             sources: vec![Source {
                 url: "https://example.com/test-1.0.0.tar.xz".to_string(),
-                hash: Some("sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_string()),
+                hash: Some(
+                    "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                        .to_string(),
+                ),
                 signature: None,
                 key_id: None,
             }],
@@ -522,7 +525,8 @@ mod tests {
     #[test]
     fn v09_hash_no_prefix_rejected() {
         let mut mrna = base_mrna();
-        mrna.sources[0].hash = Some("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_string());
+        mrna.sources[0].hash =
+            Some("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_string());
         assert!(has_error(&mrna, "sources[0].hash"));
     }
 
@@ -627,11 +631,14 @@ mod tests {
         use std::collections::HashMap;
         let mut mrna = base_mrna();
         let mut options = HashMap::new();
-        options.insert("lto".to_string(), FeatureOption {
-            description: "Link-time optimization".to_string(),
-            depends: None,
-            cflags: None,
-        });
+        options.insert(
+            "lto".to_string(),
+            FeatureOption {
+                description: "Link-time optimization".to_string(),
+                depends: None,
+                cflags: None,
+            },
+        );
         mrna.features = Some(Features {
             default: vec!["lto".to_string()],
             options,
@@ -657,11 +664,14 @@ mod tests {
         use std::collections::HashMap;
         let mut mrna = base_mrna();
         let mut options = HashMap::new();
-        options.insert("cxx".to_string(), FeatureOption {
-            description: "C++ support".to_string(),
-            depends: Some(vec!["glibc >= 2.39".to_string()]),
-            cflags: None,
-        });
+        options.insert(
+            "cxx".to_string(),
+            FeatureOption {
+                description: "C++ support".to_string(),
+                depends: Some(vec!["glibc >= 2.39".to_string()]),
+                cflags: None,
+            },
+        );
         mrna.features = Some(Features {
             default: vec![],
             options,
@@ -674,11 +684,14 @@ mod tests {
         use std::collections::HashMap;
         let mut mrna = base_mrna();
         let mut options = HashMap::new();
-        options.insert("cxx".to_string(), FeatureOption {
-            description: "C++ support".to_string(),
-            depends: Some(vec!["bad name".to_string()]),
-            cflags: None,
-        });
+        options.insert(
+            "cxx".to_string(),
+            FeatureOption {
+                description: "C++ support".to_string(),
+                depends: Some(vec!["bad name".to_string()]),
+                cflags: None,
+            },
+        );
         mrna.features = Some(Features {
             default: vec![],
             options,
@@ -692,10 +705,13 @@ mod tests {
         use std::collections::HashMap;
         let mut mrna = base_mrna();
         let mut entries = HashMap::new();
-        entries.insert("main".to_string(), OutputEntry {
-            description: "main package".to_string(),
-            files: None,
-        });
+        entries.insert(
+            "main".to_string(),
+            OutputEntry {
+                description: "main package".to_string(),
+                files: None,
+            },
+        );
         mrna.outputs = Some(Outputs { entries });
         assert!(!has_warning(&mrna, "outputs"));
     }
@@ -705,10 +721,13 @@ mod tests {
         use std::collections::HashMap;
         let mut mrna = base_mrna();
         let mut entries = HashMap::new();
-        entries.insert("lib".to_string(), OutputEntry {
-            description: "libraries".to_string(),
-            files: None,
-        });
+        entries.insert(
+            "lib".to_string(),
+            OutputEntry {
+                description: "libraries".to_string(),
+                files: None,
+            },
+        );
         mrna.outputs = Some(Outputs { entries });
         assert!(has_warning(&mrna, "outputs"));
     }
@@ -719,10 +738,13 @@ mod tests {
         use std::collections::HashMap;
         let mut mrna = base_mrna();
         let mut entries = HashMap::new();
-        entries.insert("main".to_string(), OutputEntry {
-            description: "main".to_string(),
-            files: Some(vec!["/usr/lib/*.so".to_string()]),
-        });
+        entries.insert(
+            "main".to_string(),
+            OutputEntry {
+                description: "main".to_string(),
+                files: Some(vec!["/usr/lib/*.so".to_string()]),
+            },
+        );
         mrna.outputs = Some(Outputs { entries });
         assert!(!has_warning(&mrna, "outputs.main.files[0]"));
     }
@@ -732,10 +754,13 @@ mod tests {
         use std::collections::HashMap;
         let mut mrna = base_mrna();
         let mut entries = HashMap::new();
-        entries.insert("main".to_string(), OutputEntry {
-            description: "main".to_string(),
-            files: Some(vec!["  ".to_string()]),
-        });
+        entries.insert(
+            "main".to_string(),
+            OutputEntry {
+                description: "main".to_string(),
+                files: Some(vec!["  ".to_string()]),
+            },
+        );
         mrna.outputs = Some(Outputs { entries });
         assert!(has_warning(&mrna, "outputs.main.files[0]"));
     }
@@ -745,10 +770,13 @@ mod tests {
         use std::collections::HashMap;
         let mut mrna = base_mrna();
         let mut entries = HashMap::new();
-        entries.insert("main".to_string(), OutputEntry {
-            description: "main".to_string(),
-            files: Some(vec!["/usr/lib/foo\\".to_string()]),
-        });
+        entries.insert(
+            "main".to_string(),
+            OutputEntry {
+                description: "main".to_string(),
+                files: Some(vec!["/usr/lib/foo\\".to_string()]),
+            },
+        );
         mrna.outputs = Some(Outputs { entries });
         assert!(has_warning(&mrna, "outputs.main.files[0]"));
     }

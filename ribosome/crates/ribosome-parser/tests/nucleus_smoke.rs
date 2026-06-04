@@ -30,14 +30,16 @@ fn nucleus_core_packages_all_parse() {
             continue;
         }
         let label = path.file_name().unwrap().to_string_lossy().to_string();
-        let mrna = parse_mrna_file(path).unwrap_or_else(|e| {
-            panic!("{label}: expected to parse successfully, got: {e}")
-        });
+        let mrna = parse_mrna_file(path)
+            .unwrap_or_else(|e| panic!("{label}: expected to parse successfully, got: {e}"));
         assert!(!mrna.name.is_empty(), "{label}: name is empty");
         assert_eq!(mrna.api_version, 1, "{label}: unexpected api-version");
         assert!(mrna.release >= 1, "{label}: release should be >= 1");
         assert!(!mrna.sources.is_empty(), "{label}: no sources");
         count += 1;
     }
-    assert_eq!(count, 20, "expected exactly 20 nucleus mRNA files, got {count}");
+    assert_eq!(
+        count, 20,
+        "expected exactly 20 nucleus mRNA files, got {count}"
+    );
 }

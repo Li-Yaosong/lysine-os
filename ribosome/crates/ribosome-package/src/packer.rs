@@ -75,10 +75,7 @@ pub fn pack(dest_dir: &Path, meta: &PackageMeta, output_dir: &Path) -> Result<Pa
                 continue;
             }
             let relative = path.strip_prefix(dest_dir).map_err(|_| {
-                PackageError::CreationFailed(format!(
-                    "cannot strip prefix from {}",
-                    path.display()
-                ))
+                PackageError::CreationFailed(format!("cannot strip prefix from {}", path.display()))
             })?;
             let archive_path = Path::new("FILES").join(relative);
             let mut f = std::fs::File::open(path)?;
@@ -159,7 +156,10 @@ pub fn unpack(protein_path: &Path, target_dir: &Path) -> Result<Vec<PathBuf>> {
                 continue;
             }
             // Reject path traversal attacks: no `..` components, no absolute paths
-            if relative.components().any(|c| matches!(c, std::path::Component::ParentDir)) {
+            if relative
+                .components()
+                .any(|c| matches!(c, std::path::Component::ParentDir))
+            {
                 return Err(PackageError::ExtractionFailed(format!(
                     "path escapes FILES root: {}",
                     relative.display()
@@ -190,7 +190,10 @@ pub fn hash_file(path: &Path) -> Result<String> {
 
 // --- Internal helpers ---
 
-fn add_meta_mrna(builder: &mut tar::Builder<zstd::Encoder<std::fs::File>>, meta: &PackageMeta) -> Result<()> {
+fn add_meta_mrna(
+    builder: &mut tar::Builder<zstd::Encoder<std::fs::File>>,
+    meta: &PackageMeta,
+) -> Result<()> {
     let data = meta.mrna_yaml.as_bytes();
     let mut header = tar::Header::new_gnu();
     header.set_size(data.len() as u64);
@@ -206,10 +209,7 @@ fn add_meta_manifest(
 ) -> Result<()> {
     let mut manifest = String::new();
     if dest_dir.exists() {
-        for entry in WalkDir::new(dest_dir)
-            .into_iter()
-            .filter_map(|e| e.ok())
-        {
+        for entry in WalkDir::new(dest_dir).into_iter().filter_map(|e| e.ok()) {
             if !entry.file_type().is_file() {
                 continue;
             }

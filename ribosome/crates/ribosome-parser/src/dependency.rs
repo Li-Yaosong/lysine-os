@@ -103,7 +103,10 @@ mod tests {
     fn parse_less_equal() {
         let d = parse_dependency_spec("binutils <= 2.42").unwrap();
         assert_eq!(d.name, "binutils");
-        assert!(matches!(d.constraint, Some(VersionConstraint::LessOrEqual(_))));
+        assert!(matches!(
+            d.constraint,
+            Some(VersionConstraint::LessOrEqual(_))
+        ));
     }
 
     #[test]
@@ -117,7 +120,10 @@ mod tests {
     fn parse_greater_than() {
         let d = parse_dependency_spec("openssl > 3.0").unwrap();
         assert_eq!(d.name, "openssl");
-        assert!(matches!(d.constraint, Some(VersionConstraint::GreaterThan(_))));
+        assert!(matches!(
+            d.constraint,
+            Some(VersionConstraint::GreaterThan(_))
+        ));
     }
 
     #[test]

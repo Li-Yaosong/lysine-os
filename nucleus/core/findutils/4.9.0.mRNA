@@ -1,0 +1,22 @@
+api-version: 1
+name: findutils
+version: 4.9.0
+release: 1
+description: GNU utilities for finding and processing files
+homepage: https://www.gnu.org/software/findutils/
+license: GPL-3.0-or-later
+depends:
+  runtime:
+    - glibc
+sources:
+  - url: https://ftp.gnu.org/gnu/findutils/findutils-4.9.0.tar.xz
+    hash: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+build:
+  prepare: |
+    ./configure --prefix=/usr --localstatedir=/var/lib/locate
+  compile: |
+    make -j$NPROC
+  check: |
+    make check
+  install: |
+    make DESTDIR="$DESTDIR" install

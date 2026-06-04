@@ -1,0 +1,38 @@
+api-version: 1
+name: mpfr
+version: 4.2.1
+release: 1
+description: Multiple-precision floating-point computations with correct rounding
+homepage: https://www.mpfr.org/
+license: GPL-3.0-or-later
+depends:
+  build:
+    - gmp >= 6.3
+  runtime:
+    - glibc
+    - gmp >= 6.3
+sources:
+  - url: https://www.mpfr.org/mpfr-4.2.1/mpfr-4.2.1.tar.xz
+    hash: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+build:
+  prepare: |
+    ./configure --prefix=/usr --disable-static
+  compile: |
+    make -j$NPROC
+  check: |
+    make check
+  install: |
+    make DESTDIR="$DESTDIR" install
+post-install: ldconfig
+outputs:
+  main:
+    description: MPFR floating-point library
+  lib:
+    description: Runtime libraries
+    files:
+      - /usr/lib/libmpfr.so*
+  dev:
+    description: Development headers
+    files:
+      - /usr/include/mpfr.h
+      - /usr/lib/pkgconfig/mpfr.pc

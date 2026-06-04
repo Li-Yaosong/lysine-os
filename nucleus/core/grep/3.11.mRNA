@@ -1,0 +1,22 @@
+api-version: 1
+name: grep
+version: 3.11
+release: 1
+description: GNU grep for pattern searching in text
+homepage: https://www.gnu.org/software/grep/
+license: GPL-3.0-or-later
+depends:
+  runtime:
+    - glibc
+sources:
+  - url: https://ftp.gnu.org/gnu/grep/grep-3.11.tar.xz
+    hash: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+build:
+  prepare: |
+    ./configure --prefix=/usr
+  compile: |
+    make -j$NPROC
+  check: |
+    make check
+  install: |
+    make DESTDIR="$DESTDIR" install

@@ -20,8 +20,14 @@ struct Cli {
 enum Commands {
     /// Build a package from mRNA
     Build {
-        /// Package to build
-        package: String,
+        /// Path to the .mRNA file to build
+        package: PathBuf,
+        /// Build root directory (default: ./build)
+        #[arg(long, default_value = "./build")]
+        build_root: PathBuf,
+        /// Number of parallel jobs (default: auto-detect)
+        #[arg(long)]
+        jobs: Option<usize>,
     },
     /// Enter build sandbox for debugging
     Shell {
@@ -64,10 +70,11 @@ fn main() -> ExitCode {
 fn run() -> Result<()> {
     let cli = Cli::parse();
     match cli.command {
-        Commands::Build { package } => {
-            tracing::info!("Building package: {package}");
-            bail!("build not implemented in Sprint 1");
-        }
+        Commands::Build {
+            package,
+            build_root,
+            jobs,
+        } => cmd_build(&package, &build_root, jobs),
         Commands::Shell { package } => {
             tracing::info!("Entering sandbox for: {package}");
             bail!("shell not implemented in Sprint 1");
@@ -177,4 +184,75 @@ fn collect_mrna_paths(path: &Path) -> Result<Vec<PathBuf>> {
     }
     files.sort();
     Ok(files)
+}
+
+fn cmd_build(mrna_path: &Path, build_root: &Path, jobs: Option<usize>) -> Result<()> {
+    let mrna = parse_mrna_file(mrna_path)
+        .with_context(|| format!("failed to parse {}", mrna_path.display()))?;
+
+    let label = format!("{}-{}", mrna.name, mrna.version);
+    tracing::info!("building {label}");
+
+    // Sprint 1 safety warning: no sandbox
+    eprintln!("\x1b[33m[WARN] Sprint 1 executes build scripts directly on host (no membrane sandbox).\x1b[0m");
+    eprintln!("\x1b[33m        Only build trusted mRNA files on development machines.\x1b[0m\n");
+
+    let mut config = ribosome_core::BuildConfig::new(build_root);
+    if let Some(j) = jobs {
+        config.jobs = j;
+    }
+
+    let ctx = ribosome_core::BuildContext::new(mrna, config);
+    let result = ribosome_core::BuildExecutor::build(&ctx)
+        .with_context(|| format!("build failed for {label}"))?;
+
+    for phase in &result.phases {
+        let status = if phase.success { "OK" } else { "FAIL" };
+        println!(
+            "  [{status}] {} ({:.1}s)",
+            phase.phase,
+            phase.duration.as_secs_f64()
+        );
+    }
+
+    if result.is_ok() {
+        println!(
+            "[OK] {} — {} phases, {:.1}s total",
+            result.package,
+            result.phases.len(),
+            result.total_duration.as_secs_f64()
+        );
+        println!("  dest: {}", result.dest_dir.display());
+        println!("  transcript: {}", ctx.transcript_path().display());
+        if let Some(protein) = &result.protein {
+            println!(
+                "  protein: {} ({}, {} files, {})",
+                protein.path.display(),
+                format_size(protein.size_bytes),
+                protein.file_count,
+                &protein.sha256[..22]
+            );
+        }
+        Ok(())
+    } else if let Some(pack_err) = &result.pack_error {
+        bail!(
+            "[FAIL] {} — build phases succeeded but packing failed: {pack_err}",
+            result.package
+        );
+    } else {
+        bail!(
+            "[FAIL] {} — build did not complete successfully",
+            result.package
+        );
+    }
+}
+
+fn format_size(bytes: u64) -> String {
+    if bytes < 1024 {
+        format!("{} B", bytes)
+    } else if bytes < 1024 * 1024 {
+        format!("{} KiB", bytes / 1024)
+    } else {
+        format!("{} MiB", bytes / (1024 * 1024))
+    }
 }

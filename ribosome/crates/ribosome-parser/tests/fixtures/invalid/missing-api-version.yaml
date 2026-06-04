@@ -1,0 +1,9 @@
+name: no-api-version
+version: 1.0.0
+release: 1
+description: Missing api-version
+license: MIT
+sources:
+  - url: https://example.com/test.tar.gz
+build:
+  install: make install

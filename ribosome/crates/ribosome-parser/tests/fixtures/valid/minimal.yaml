@@ -1,0 +1,12 @@
+api-version: 1
+name: zlib
+version: 1.3.1
+release: 1
+description: Compression library
+license: Zlib
+sources:
+  - url: https://zlib.net/zlib-1.3.1.tar.xz
+    hash: sha256:16455bf0addbd0f1241910a512f7e7b72a7aff05932ad9a105eb061e9119bfe1
+build:
+  install: |
+    make DESTDIR="$DESTDIR" install

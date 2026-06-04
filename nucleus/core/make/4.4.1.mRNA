@@ -1,0 +1,24 @@
+api-version: 1
+name: make
+version: 4.4.1
+release: 1
+description: GNU Make build automation tool
+homepage: https://www.gnu.org/software/make/
+license: GPL-3.0-or-later
+depends:
+  build:
+    - glibc
+  runtime:
+    - glibc
+sources:
+  - url: https://ftp.gnu.org/gnu/make/make-4.4.1.tar.bz2
+    hash: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+build:
+  prepare: |
+    ./configure --prefix=/usr
+  compile: |
+    make -j$NPROC
+  check: |
+    make check
+  install: |
+    make DESTDIR="$DESTDIR" install

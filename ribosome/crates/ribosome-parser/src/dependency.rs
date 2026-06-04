@@ -18,6 +18,7 @@ pub fn parse_dependency_spec(input: &str) -> Result<DependencySpec, String> {
 
     const OPS: &[(&str, ConstraintFactory)] = &[
         (">=", |v| VersionConstraint::GreaterOrEqual(v)),
+        ("<=", |v| VersionConstraint::LessOrEqual(v)),
         ("<", |v| VersionConstraint::LessThan(v)),
         (">", |v| VersionConstraint::GreaterThan(v)),
         ("=", |v| VersionConstraint::Equal(v)),
@@ -61,6 +62,7 @@ pub fn is_valid_package_name(name: &str) -> bool {
         None => return false,
     };
     if first.is_empty()
+        || !first.starts_with(|c: char| c.is_ascii_lowercase())
         || !first
             .chars()
             .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
@@ -98,8 +100,89 @@ mod tests {
     }
 
     #[test]
+    fn parse_less_equal() {
+        let d = parse_dependency_spec("binutils <= 2.42").unwrap();
+        assert_eq!(d.name, "binutils");
+        assert!(matches!(
+            d.constraint,
+            Some(VersionConstraint::LessOrEqual(_))
+        ));
+    }
+
+    #[test]
+    fn parse_less_than() {
+        let d = parse_dependency_spec("kernel < 7.0").unwrap();
+        assert_eq!(d.name, "kernel");
+        assert!(matches!(d.constraint, Some(VersionConstraint::LessThan(_))));
+    }
+
+    #[test]
+    fn parse_greater_than() {
+        let d = parse_dependency_spec("openssl > 3.0").unwrap();
+        assert_eq!(d.name, "openssl");
+        assert!(matches!(
+            d.constraint,
+            Some(VersionConstraint::GreaterThan(_))
+        ));
+    }
+
+    #[test]
+    fn parse_exact_equal() {
+        let d = parse_dependency_spec("python3 = 3.12").unwrap();
+        assert_eq!(d.name, "python3");
+        assert!(matches!(d.constraint, Some(VersionConstraint::Equal(_))));
+    }
+
+    #[test]
     fn parse_invalid() {
         assert!(parse_dependency_spec("").is_err());
         assert!(parse_dependency_spec("bad name >= 1").is_err());
+    }
+
+    #[test]
+    fn parse_uppercase_name_rejected() {
+        assert!(parse_dependency_spec("Glibc >= 2.39").is_err());
+    }
+
+    #[test]
+    fn parse_digit_start_name_rejected() {
+        assert!(parse_dependency_spec("9base").is_err());
+    }
+
+    #[test]
+    fn parse_multi_segment_name() {
+        let d = parse_dependency_spec("linux-api-headers").unwrap();
+        assert_eq!(d.name, "linux-api-headers");
+        assert!(d.constraint.is_none());
+    }
+
+    #[test]
+    fn parse_no_spaces_constraint() {
+        let d = parse_dependency_spec("glibc>=2.39").unwrap();
+        assert_eq!(d.name, "glibc");
+        assert!(d.constraint.is_some());
+    }
+
+    #[test]
+    fn parse_constraint_only_operator_rejected() {
+        assert!(parse_dependency_spec("glibc >=").is_err());
+    }
+
+    #[test]
+    fn valid_package_names() {
+        assert!(is_valid_package_name("glibc"));
+        assert!(is_valid_package_name("linux-api-headers"));
+        assert!(is_valid_package_name("openssl"));
+        assert!(is_valid_package_name("gcc"));
+    }
+
+    #[test]
+    fn invalid_package_names() {
+        assert!(!is_valid_package_name(""));
+        assert!(!is_valid_package_name("Bad Name"));
+        assert!(!is_valid_package_name("UPPER"));
+        assert!(!is_valid_package_name("9base"));
+        assert!(!is_valid_package_name("-leading"));
+        assert!(!is_valid_package_name("trailing-"));
     }
 }

@@ -22,8 +22,8 @@ authors = ["LysineOS Team"]
 
 [workspace.dependencies]
 serde = { version = "1.0", features = ["derive"] }
-serde_yaml = "0.9"
-thiserror = "1.0"
+serde_yaml = { package = "yaml_serde", version = "0.10" }
+thiserror = "2.0"
 anyhow = "1.0"
 tokio = { version = "1.40", features = ["full"] }
 tracing = "0.1"

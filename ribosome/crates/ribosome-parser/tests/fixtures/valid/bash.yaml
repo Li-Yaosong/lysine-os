@@ -1,0 +1,16 @@
+api-version: 1
+name: bash
+version: 5.2.37
+release: 1
+description: Bourne Again Shell
+license: GPL-3.0-or-later
+depends:
+  runtime:
+    - glibc
+patches:
+  - bash-5.2-upstream-fixes.patch
+sources:
+  - url: https://ftp.gnu.org/gnu/bash/bash-5.2.37.tar.gz
+    hash: sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+build:
+  install: make install

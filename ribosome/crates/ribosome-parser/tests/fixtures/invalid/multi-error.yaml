@@ -1,0 +1,15 @@
+api-version: 99
+name: bad-package
+version: 1.0.0
+release: 0
+description: ""
+license: ""
+sources:
+  - url: not-a-url
+    hash: sha256:abc
+    signature: unknown
+build:
+  install: ""
+depends:
+  build:
+    - "bad package"

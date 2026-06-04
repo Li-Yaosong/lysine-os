@@ -1,0 +1,39 @@
+api-version: 1
+name: perl
+version: 5.40.0
+release: 1
+description: Practical Extraction and Report Language
+homepage: https://www.perl.org/
+license: Artistic-1.0-Perl OR GPL-1.0-or-later
+depends:
+  build:
+    - glibc
+  runtime:
+    - glibc
+sources:
+  - url: https://www.cpan.org/src/5.0/perl-5.40.0.tar.xz
+    hash: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+build:
+  prepare: |
+    sh Configure -des -Dprefix=/usr -Dvendorprefix=/usr \
+      -Dprivlib=/usr/lib/perl5/core_perl \
+      -Darchlib=/usr/lib/perl5/core_perl \
+      -Dsitelib=/usr/lib/perl5/site_perl \
+      -Dsitearch=/usr/lib/perl5/site_perl \
+      -Dvendorlib=/usr/lib/perl5/vendor_perl \
+      -Dvendorarch=/usr/lib/perl5/vendor_perl \
+      -Dman1dir=/usr/share/man/man1 \
+      -Dman3dir=/usr/share/man/man3 \
+      -Dpager="/usr/bin/less -R" \
+      -Duseshrplib -Dusethreads
+  compile: |
+    make -j$NPROC
+  install: |
+    make DESTDIR="$DESTDIR" install
+outputs:
+  main:
+    description: Perl language interpreter
+  dev:
+    description: Perl development headers
+    files:
+      - /usr/lib/perl5/core_perl/CORE/**

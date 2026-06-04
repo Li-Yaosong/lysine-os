@@ -2,10 +2,10 @@ use std::collections::HashMap;
 use std::fmt;
 
 use serde::de::{self, MapAccess, Visitor};
-use serde::{Deserialize, Deserializer};
+use serde::{Deserialize, Deserializer, Serialize};
 
 /// Root mRNA document (internal IR).
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct MrnaFile {
     #[serde(rename = "api-version")]
     pub api_version: u32,
@@ -29,7 +29,7 @@ pub struct MrnaFile {
     pub outputs: Option<Outputs>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Depends {
     pub build: Option<Vec<String>>,
     pub runtime: Option<Vec<String>>,
@@ -51,7 +51,7 @@ impl Depends {
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Source {
     pub url: String,
     pub hash: Option<String>,
@@ -60,7 +60,7 @@ pub struct Source {
     pub key_id: Option<String>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Build {
     pub prepare: Option<String>,
     pub compile: Option<String>,
@@ -68,7 +68,7 @@ pub struct Build {
     pub install: Option<String>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Features {
     #[serde(default)]
     pub default: Vec<String>,
@@ -76,7 +76,7 @@ pub struct Features {
     pub options: HashMap<String, FeatureOption>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct FeatureOption {
     pub description: String,
     pub depends: Option<Vec<String>>,
@@ -84,20 +84,20 @@ pub struct FeatureOption {
 }
 
 /// Sub-package split definitions.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Outputs {
     #[serde(flatten)]
     pub entries: HashMap<String, OutputEntry>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct OutputEntry {
     pub description: String,
     pub files: Option<Vec<String>>,
 }
 
 /// Patch file reference (plain name or conditional map entry).
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub enum PatchItem {
     Simple(String),
     Conditional {

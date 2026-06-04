@@ -28,6 +28,7 @@ impl Ord for Version {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum VersionConstraint {
     GreaterOrEqual(Version),
+    LessOrEqual(Version),
     LessThan(Version),
     Equal(Version),
     GreaterThan(Version),
@@ -78,6 +79,7 @@ impl Version {
     pub fn satisfies(&self, constraint: &VersionConstraint) -> bool {
         match constraint {
             VersionConstraint::GreaterOrEqual(v) => self >= v,
+            VersionConstraint::LessOrEqual(v) => self <= v,
             VersionConstraint::LessThan(v) => self < v,
             VersionConstraint::Equal(v) => self == v,
             VersionConstraint::GreaterThan(v) => self > v,
@@ -124,5 +126,76 @@ mod tests {
         let v = Version::parse("2.40").unwrap();
         let c = VersionConstraint::GreaterOrEqual(Version::parse("2.39").unwrap());
         assert!(v.satisfies(&c));
+    }
+
+    #[test]
+    fn satisfies_less_equal() {
+        let v = Version::parse("2.40").unwrap();
+        let c = VersionConstraint::LessOrEqual(Version::parse("2.40").unwrap());
+        assert!(v.satisfies(&c));
+    }
+
+    #[test]
+    fn satisfies_less_than() {
+        let v = Version::parse("2.39").unwrap();
+        let c = VersionConstraint::LessThan(Version::parse("2.40").unwrap());
+        assert!(v.satisfies(&c));
+    }
+
+    #[test]
+    fn satisfies_exact_equal() {
+        let v = Version::parse("1.0.0").unwrap();
+        let c = VersionConstraint::Equal(Version::parse("1.0.0").unwrap());
+        assert!(v.satisfies(&c));
+        let c2 = VersionConstraint::Equal(Version::parse("1.0.1").unwrap());
+        assert!(!v.satisfies(&c2));
+    }
+
+    #[test]
+    fn satisfies_greater_than() {
+        let v = Version::parse("2.41").unwrap();
+        let c = VersionConstraint::GreaterThan(Version::parse("2.40").unwrap());
+        assert!(v.satisfies(&c));
+        let c2 = VersionConstraint::GreaterThan(Version::parse("2.41").unwrap());
+        assert!(!v.satisfies(&c2));
+    }
+
+    #[test]
+    fn parse_version_with_pre_release() {
+        let v = Version::parse("1.0.0-rc1").unwrap();
+        assert_eq!(v.major, 1);
+        assert_eq!(v.minor, 0);
+        assert_eq!(v.patch, 0);
+        assert_eq!(v.rest, "-rc1");
+    }
+
+    #[test]
+    fn parse_single_component_version() {
+        let v = Version::parse("6").unwrap();
+        assert_eq!(v.major, 6);
+        assert_eq!(v.minor, 0);
+        assert_eq!(v.patch, 0);
+    }
+
+    #[test]
+    fn parse_empty_version_rejected() {
+        assert!(Version::parse("").is_err());
+        assert!(Version::parse("  ").is_err());
+    }
+
+    #[test]
+    fn parse_invalid_component_rejected() {
+        assert!(Version::parse("a.b.c").is_err());
+    }
+
+    #[test]
+    fn version_ordering() {
+        let versions: Vec<Version> = ["1.0.0", "1.0.1", "1.1.0", "2.0.0"]
+            .iter()
+            .map(|s| Version::parse(s).unwrap())
+            .collect();
+        for i in 0..versions.len() - 1 {
+            assert!(versions[i] < versions[i + 1]);
+        }
     }
 }

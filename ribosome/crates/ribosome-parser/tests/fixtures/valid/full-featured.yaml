@@ -1,0 +1,61 @@
+api-version: 1
+name: gcc
+version: 14.2.0
+release: 1
+description: GNU Compiler Collection
+homepage: https://gcc.gnu.org/
+license: GPL-3.0-or-later
+maintainer: toolchain@lysine-os.org
+tags:
+  - compiler
+  - toolchain
+depends:
+  build:
+    - binutils >= 2.42
+    - glibc >= 2.39
+    - gmp
+    - mpfr
+    - mpc
+  runtime:
+    - glibc >= 2.39
+    - binutils >= 2.42
+features:
+  default: [lto]
+  options:
+    lto:
+      description: Link-time optimization
+      cflags: -flto=auto
+    cxx:
+      description: C++ language support
+    fortran:
+      description: Fortran language support
+      depends:
+        - glibc >= 2.39
+sources:
+  - url: https://ftp.gnu.org/gnu/gcc/gcc-14.2.0/gcc-14.2.0.tar.xz
+    hash: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+patches:
+  - fix-build.patch
+  - aarch64-fix.patch:
+      condition: 'arch == "aarch64"'
+build:
+  prepare: |
+    mkdir build && cd build
+  compile: |
+    make -j$(nproc)
+  check: |
+    make -k check || true
+  install: |
+    make DESTDIR="$DESTDIR" install
+post-install: ldconfig
+outputs:
+  main:
+    description: main compiler package
+  lib:
+    description: runtime libraries
+    files:
+      - /usr/lib/*.so*
+  dev:
+    description: development headers
+    files:
+      - /usr/include/**

@@ -1,0 +1,13 @@
+api-version: 1
+name: bad-feature
+version: 1.0.0
+release: 1
+description: Default feature not in options
+license: MIT
+features:
+  default: [nonexistent]
+  options: {}
+sources:
+  - url: https://example.com/test.tar.gz
+build:
+  install: make install

@@ -1,0 +1,13 @@
+api-version: 1
+name: self-dep
+version: 1.0.0
+release: 1
+description: Depends on itself
+license: MIT
+depends:
+  build:
+    - self-dep
+sources:
+  - url: https://example.com/test.tar.gz
+build:
+  install: make install

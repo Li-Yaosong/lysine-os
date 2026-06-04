@@ -1,0 +1,9 @@
+api-version: 1
+name: no-sources
+version: 1.0.0
+release: 1
+description: Package with no sources
+license: MIT
+sources: []
+build:
+  install: make install

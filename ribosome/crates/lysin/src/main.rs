@@ -3,10 +3,8 @@ use std::process::ExitCode;
 
 use anyhow::Result;
 use clap::Parser;
-
-mod config;
-mod db;
-mod ops;
+use lysin::config;
+use lysin::ops;
 
 #[derive(Parser)]
 #[command(name = "lysin")]

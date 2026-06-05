@@ -123,6 +123,13 @@ mod tests {
         }
     }
 
+    fn test_pkg_with_deps(name: &str, deps: Vec<&str>) -> InstalledPackage {
+        InstalledPackage {
+            depends: deps.into_iter().map(|d| d.to_string()).collect(),
+            ..test_pkg(name)
+        }
+    }
+
     #[test]
     fn db_add_find_remove() {
         let tmp = tempfile::tempdir().unwrap();
@@ -172,5 +179,84 @@ mod tests {
 
         assert_eq!(db.list().len(), 1);
         assert_eq!(db.find("bash").unwrap().version, "2.0.0");
+    }
+
+    #[test]
+    fn db_load_nonexistent_creates_empty() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut db = LocalDb::new(tmp.path());
+        db.load().unwrap();
+
+        assert!(db.list().is_empty());
+        assert!(!db.is_installed("anything"));
+        assert!(db.find("nothing").is_none());
+    }
+
+    #[test]
+    fn db_remove_nonexistent_returns_none() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut db = LocalDb::new(tmp.path());
+        db.load().unwrap();
+
+        assert!(db.remove("ghost").is_none());
+    }
+
+    #[test]
+    fn db_find_nonexistent_returns_none() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut db = LocalDb::new(tmp.path());
+        db.load().unwrap();
+        db.add(test_pkg("bash"));
+
+        assert!(db.find("gcc").is_none());
+    }
+
+    #[test]
+    fn db_installed_names() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut db = LocalDb::new(tmp.path());
+        db.load().unwrap();
+
+        db.add(test_pkg("bash"));
+        db.add(test_pkg("gcc"));
+        db.add(test_pkg("glibc"));
+
+        let mut names = db.installed_names();
+        names.sort();
+        assert_eq!(names, vec!["bash", "gcc", "glibc"]);
+    }
+
+    #[test]
+    fn db_handles_corrupted_lines() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db_path = tmp.path().join("installed.db");
+        // Write a mix of valid and invalid JSON lines
+        std::fs::write(
+            &db_path,
+            "this is not json\n{\"name\":\"bash\",\"version\":\"1.0\",\"release\":1,\"install_date\":\"\",\"package_hash\":\"\",\"files\":[],\"depends\":[],\"origin\":\"\"}\n\n",
+        ).unwrap();
+
+        let mut db = LocalDb::new(tmp.path());
+        db.load().unwrap();
+
+        // Corrupted lines should be silently skipped
+        assert_eq!(db.list().len(), 1);
+        assert!(db.is_installed("bash"));
+    }
+
+    #[test]
+    fn db_preserves_package_with_deps() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut db = LocalDb::new(tmp.path());
+        db.load().unwrap();
+
+        let pkg = test_pkg_with_deps("app", vec!["liba", "libb"]);
+        db.add(pkg);
+        db.save().unwrap();
+
+        let mut db2 = LocalDb::new(tmp.path());
+        db2.load().unwrap();
+        let loaded = db2.find("app").unwrap();
+        assert_eq!(loaded.depends, vec!["liba", "libb"]);
     }
 }

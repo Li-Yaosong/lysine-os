@@ -1,0 +1,21 @@
+api-version: 1
+name: linux-pam
+version: 1.6.1
+release: 1
+description: Pluggable Authentication Modules
+homepage: https://www.linux-pam.org/
+license: BSD-3-Clause
+depends:
+  runtime:
+    - glibc
+    - libxcrypt
+sources:
+  - url: https://github.com/linux-pam/linux-pam/releases/download/v1.6.1/Linux-PAM-1.6.1.tar.xz
+    hash: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+build:
+  prepare: |
+    ./configure --prefix=/usr --disable-static
+  compile: |
+    make -j$NPROC
+  install: |
+    make DESTDIR="$DESTDIR" install

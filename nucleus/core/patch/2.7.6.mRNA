@@ -1,0 +1,22 @@
+api-version: 1
+name: patch
+version: 2.7.6
+release: 1
+description: Apply diffs to original files
+homepage: https://savannah.gnu.org/projects/patch/
+license: GPL-3.0-or-later
+depends:
+  runtime:
+    - glibc
+sources:
+  - url: https://ftp.gnu.org/gnu/patch/patch-2.7.6.tar.xz
+    hash: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+build:
+  prepare: |
+    ./configure --prefix=/usr
+  compile: |
+    make -j$NPROC
+  check: |
+    make check
+  install: |
+    make DESTDIR="$DESTDIR" install

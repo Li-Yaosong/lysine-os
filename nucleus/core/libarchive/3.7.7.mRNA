@@ -1,0 +1,26 @@
+api-version: 1
+name: libarchive
+version: 3.7.7
+release: 1
+description: Multi-format archive library
+homepage: https://www.libarchive.org/
+license: BSD-2-Clause
+depends:
+  runtime:
+    - glibc
+    - zlib
+    - bzip2
+    - xz
+    - lz4
+    - zstd
+    - openssl
+sources:
+  - url: https://www.libarchive.org/downloads/libarchive-3.7.7.tar.xz
+    hash: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+build:
+  prepare: |
+    ./configure --prefix=/usr --disable-static
+  compile: |
+    make -j$NPROC
+  install: |
+    make DESTDIR="$DESTDIR" install

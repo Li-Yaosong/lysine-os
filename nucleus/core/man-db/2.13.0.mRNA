@@ -1,0 +1,23 @@
+api-version: 1
+name: man-db
+version: 2.13.0
+release: 1
+description: Manual page viewer and search utilities
+homepage: https://gitlab.com/man-db/man-db
+license: GPL-2.0-or-later
+depends:
+  runtime:
+    - glibc
+    - zlib
+    - gdbm
+    - libpipeline
+sources:
+  - url: https://download.savannah.nongnu.org/releases/man-db/man-db-2.13.0.tar.xz
+    hash: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+build:
+  prepare: |
+    ./configure --prefix=/usr --sysconfdir=/etc --disable-static
+  compile: |
+    make -j$NPROC
+  install: |
+    make DESTDIR="$DESTDIR" install

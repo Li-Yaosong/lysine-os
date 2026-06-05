@@ -1,0 +1,21 @@
+api-version: 1
+name: e2fsprogs
+version: 1.47.1
+release: 1
+description: Ext2/3/4 filesystem utilities
+homepage: https://e2fsprogs.sourceforge.net/
+license: GPL-2.0-or-later
+depends:
+  runtime:
+    - glibc
+    - util-linux
+sources:
+  - url: https://downloads.sourceforge.net/project/e2fsprogs/e2fsprogs/v1.47.1/e2fsprogs-1.47.1.tar.xz
+    hash: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+build:
+  prepare: |
+    ./configure --prefix=/usr --with-root-prefix=""
+  compile: |
+    make -j$NPROC
+  install: |
+    make DESTDIR="$DESTDIR" install install-libs

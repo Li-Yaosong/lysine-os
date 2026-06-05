@@ -1,0 +1,24 @@
+api-version: 1
+name: util-linux
+version: 2.40.2
+release: 1
+description: Linux system utilities including mount, fdisk, and more
+homepage: https://git.kernel.org/pub/scm/utils/util-linux/util-linux.git
+license: GPL-2.0-or-later
+depends:
+  runtime:
+    - glibc
+    - ncurses
+    - zlib
+    - libxcrypt
+    - linux-pam
+sources:
+  - url: https://kernel.org/pub/linux/utils/util-linux/v2.40/util-linux-2.40.2.tar.xz
+    hash: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+build:
+  prepare: |
+    ./configure --prefix=/usr --disable-static --without-python
+  compile: |
+    make -j$NPROC
+  install: |
+    make DESTDIR="$DESTDIR" install

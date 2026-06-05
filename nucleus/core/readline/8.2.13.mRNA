@@ -1,0 +1,30 @@
+api-version: 1
+name: readline
+version: 8.2.13
+release: 1
+description: GNU command-line editing library
+homepage: https://tiswww.case.edu/php/chet/readline/rltop.html
+license: GPL-3.0-or-later
+depends:
+  runtime:
+    - glibc
+    - ncurses
+sources:
+  - url: https://ftp.gnu.org/gnu/readline/readline-8.2.13.tar.xz
+    hash: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+build:
+  prepare: |
+    ./configure --prefix=/usr --with-curses
+  compile: |
+    make -j$NPROC
+  install: |
+    make DESTDIR="$DESTDIR" install
+outputs:
+  main:
+    description: GNU command-line editing library
+  dev:
+    description: Development files for readline
+    files:
+      - /usr/include/readline/**
+      - /usr/lib/libreadline.a
+      - /usr/lib/libhistory.a

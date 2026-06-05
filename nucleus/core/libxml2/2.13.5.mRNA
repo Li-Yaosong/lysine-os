@@ -1,0 +1,23 @@
+api-version: 1
+name: libxml2
+version: 2.13.5
+release: 1
+description: XML C parser and toolkit
+homepage: https://gitlab.gnome.org/GNOME/libxml2/
+license: MIT
+depends:
+  runtime:
+    - glibc
+    - zlib
+    - readline
+    - ncurses
+sources:
+  - url: https://download.gnome.org/sources/libxml2/2.13/libxml2-2.13.5.tar.xz
+    hash: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+build:
+  prepare: |
+    ./configure --prefix=/usr --disable-static
+  compile: |
+    make -j$NPROC
+  install: |
+    make DESTDIR="$DESTDIR" install

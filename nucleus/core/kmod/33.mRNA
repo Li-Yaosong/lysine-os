@@ -1,0 +1,22 @@
+api-version: 1
+name: kmod
+version: "33"
+release: 1
+description: Linux kernel module management utilities
+homepage: https://git.kernel.org/pub/scm/utils/kernel/kmod/kmod.git
+license: LGPL-2.1-or-later
+depends:
+  runtime:
+    - glibc
+    - zlib
+    - openssl
+sources:
+  - url: https://kernel.org/pub/linux/utils/kernel/kmod/kmod-33.tar.xz
+    hash: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+build:
+  prepare: |
+    ./configure --prefix=/usr --disable-static --with-openssl
+  compile: |
+    make -j$NPROC
+  install: |
+    make DESTDIR="$DESTDIR" install

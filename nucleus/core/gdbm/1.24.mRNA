@@ -1,0 +1,20 @@
+api-version: 1
+name: gdbm
+version: 1.24
+release: 1
+description: GNU database manager
+homepage: https://www.gnu.org/software/gdbm/
+license: GPL-3.0-or-later
+depends:
+  runtime:
+    - glibc
+sources:
+  - url: https://ftp.gnu.org/gnu/gdbm/gdbm-1.24.tar.xz
+    hash: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+build:
+  prepare: |
+    ./configure --prefix=/usr --enable-libgdbm-compat
+  compile: |
+    make -j$NPROC
+  install: |
+    make DESTDIR="$DESTDIR" install

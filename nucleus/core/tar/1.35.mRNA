@@ -1,0 +1,24 @@
+api-version: 1
+name: tar
+version: "1.35"
+release: 1
+description: GNU tape archiver for creating and extracting archives
+homepage: https://www.gnu.org/software/tar/
+license: GPL-3.0-or-later
+depends:
+  runtime:
+    - glibc
+    - acl
+    - attr
+sources:
+  - url: https://ftp.gnu.org/gnu/tar/tar-1.35.tar.xz
+    hash: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+build:
+  prepare: |
+    ./configure --prefix=/usr --disable-static
+  compile: |
+    make -j$NPROC
+  check: |
+    make check
+  install: |
+    make DESTDIR="$DESTDIR" install

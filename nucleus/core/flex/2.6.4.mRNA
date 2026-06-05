@@ -1,0 +1,24 @@
+api-version: 1
+name: flex
+version: 2.6.4
+release: 1
+description: Fast lexical analyzer generator
+homepage: https://github.com/westes/flex
+license: BSD-2-Clause
+depends:
+  build:
+    - bison
+  runtime:
+    - glibc
+sources:
+  - url: https://github.com/westes/flex/releases/download/v2.6.4/flex-2.6.4.tar.gz
+    hash: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+build:
+  prepare: |
+    ./configure --prefix=/usr --docdir=/usr/share/doc/flex-2.6.4
+  compile: |
+    make -j$NPROC
+  check: |
+    make check
+  install: |
+    make DESTDIR="$DESTDIR" install

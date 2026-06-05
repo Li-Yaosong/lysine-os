@@ -1,0 +1,36 @@
+api-version: 1
+name: gnupg
+version: 2.4.5
+release: 1
+description: GNU Privacy Guard - OpenPGP encryption and signing tool
+homepage: https://www.gnupg.org/
+license: GPL-3.0-or-later
+depends:
+  build:
+    - libgpg-error
+    - libgcrypt
+    - npth
+    - zlib
+    - bzip2
+    - readline
+    - libassuan
+  runtime:
+    - glibc
+    - libgpg-error
+    - libgcrypt
+    - npth
+    - zlib
+    - bzip2
+    - readline
+sources:
+  - url: https://www.gnupg.org/ftp/gcrypt/gnupg/gnupg-2.4.5.tar.bz2
+    hash: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+build:
+  prepare: |
+    ./configure --prefix=/usr \
+      --sysconfdir=/etc \
+      --enable-large-secmem
+  compile: |
+    make -j$NPROC
+  install: |
+    make DESTDIR="$DESTDIR" install

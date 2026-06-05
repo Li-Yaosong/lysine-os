@@ -1,0 +1,20 @@
+api-version: 1
+name: markupsafe
+version: 2.1.5
+release: 1
+description: XML escaping and unescaping module for Python
+homepage: https://palletsprojects.com/p/markupsafe/
+license: BSD-3-Clause
+depends:
+  build:
+    - python3
+  runtime:
+    - python3
+sources:
+  - url: https://files.pythonhosted.org/packages/source/M/MarkupSafe/MarkupSafe-2.1.5.tar.gz
+    hash: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+build:
+  prepare: |
+    python3 setup.py build
+  install: |
+    python3 setup.py install --root="$DESTDIR" --prefix=/usr

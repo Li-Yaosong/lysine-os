@@ -1,0 +1,20 @@
+api-version: 1
+name: libuv
+version: 1.49.2
+release: 1
+description: Cross-platform async I/O library
+homepage: https://libuv.org/
+license: MIT
+depends:
+  runtime:
+    - glibc
+sources:
+  - url: https://dist.libuv.org/dist/v1.49.2/libuv-v1.49.2.tar.gz
+    hash: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+build:
+  prepare: |
+    ./configure --prefix=/usr
+  compile: |
+    make -j$NPROC
+  install: |
+    make DESTDIR="$DESTDIR" install

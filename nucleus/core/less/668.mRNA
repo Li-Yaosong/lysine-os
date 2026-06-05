@@ -1,0 +1,21 @@
+api-version: 1
+name: less
+version: "668"
+release: 1
+description: Terminal pager program for viewing text files
+homepage: https://www.greenwoodsoftware.com/less/
+license: GPL-3.0-or-later
+depends:
+  runtime:
+    - glibc
+    - ncurses
+sources:
+  - url: https://www.greenwoodsoftware.com/less/less-668.tar.gz
+    hash: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+build:
+  prepare: |
+    ./configure --prefix=/usr --sysconfdir=/etc
+  compile: |
+    make -j$NPROC
+  install: |
+    make DESTDIR="$DESTDIR" install

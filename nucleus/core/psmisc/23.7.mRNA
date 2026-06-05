@@ -1,0 +1,21 @@
+api-version: 1
+name: psmisc
+version: "23.7"
+release: 1
+description: Process handling utilities including killall and fuser
+homepage: https://gitlab.com/psmisc/psmisc
+license: GPL-2.0-or-later
+depends:
+  runtime:
+    - glibc
+    - ncurses
+sources:
+  - url: https://sourceforge.net/projects/psmisc/files/psmisc/psmisc-23.7.tar.xz
+    hash: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+build:
+  prepare: |
+    ./configure --prefix=/usr
+  compile: |
+    make -j$NPROC
+  install: |
+    make DESTDIR="$DESTDIR" install

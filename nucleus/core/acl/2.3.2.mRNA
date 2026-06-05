@@ -1,0 +1,22 @@
+api-version: 1
+name: acl
+version: 2.3.2
+release: 1
+description: Access control list utilities
+homepage: https://savannah.nongnu.org/projects/acl/
+license: LGPL-2.1-or-later
+depends:
+  build:
+    - libcap
+  runtime:
+    - glibc
+sources:
+  - url: https://download.savannah.nongnu.org/releases/acl/acl-2.3.2.tar.xz
+    hash: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+build:
+  prepare: |
+    ./configure --prefix=/usr --disable-static
+  compile: |
+    make -j$NPROC
+  install: |
+    make DESTDIR="$DESTDIR" install

@@ -1,0 +1,24 @@
+api-version: 1
+name: shadow
+version: 4.16.0
+release: 1
+description: Password and account management tools
+homepage: https://github.com/shadow-maint/shadow
+license: BSD-3-Clause
+depends:
+  runtime:
+    - glibc
+    - libxcrypt
+    - linux-pam
+    - acl
+    - attr
+sources:
+  - url: https://github.com/shadow-maint/shadow/releases/download/4.16.0/shadow-4.16.0.tar.xz
+    hash: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+build:
+  prepare: |
+    ./configure --prefix=/usr --with-group-name-max-length=32
+  compile: |
+    make -j$NPROC
+  install: |
+    make DESTDIR="$DESTDIR" install

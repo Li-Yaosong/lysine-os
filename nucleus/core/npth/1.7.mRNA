@@ -10,7 +10,7 @@ depends:
     - glibc
 sources:
   - url: https://www.gnupg.org/ftp/gcrypt/npth/npth-1.7.tar.bz2
-    hash: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    hash: sha256:8589f56937b75ce33b28d312fccbf302b3b71ec3f3945fde6aaa74027914ad05
 build:
   prepare: |
     ./configure --prefix=/usr

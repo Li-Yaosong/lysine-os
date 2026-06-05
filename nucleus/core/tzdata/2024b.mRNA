@@ -1,0 +1,41 @@
+api-version: 1
+name: tzdata
+version: "2024b"
+release: 1
+
+description: Time zone and daylight-saving time data
+homepage: https://www.iana.org/time-zones
+license: LicenseRef-PublicDomain
+
+depends:
+  runtime:
+    - glibc
+
+sources:
+  - url: https://www.iana.org/time-zones/repository/releases/tzdata2024b.tar.gz
+    hash: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+
+build:
+  prepare: |
+    mkdir -v tzbuild && cd tzbuild
+  compile: |
+    cd tzbuild
+    ZIC="$ZIC" \
+    CC="gcc" \
+    CFLAGS="$CFLAGS" \
+    LDFLAGS="$LDFLAGS" \
+    make -j1
+  install: |
+    cd tzbuild
+    ZIC="$ZIC" \
+    make DESTDIR="$DESTDIR" \
+      TZDIR="/usr/share/zoneinfo" \
+      ETCDIR="/etc" \
+      MANDIR="/usr/share/man" \
+      install
+    # Create default localtime symlink
+    install -d "$DESTDIR/etc"
+    ln -sf /usr/share/zoneinfo/UTC "$DESTDIR/etc/localtime"
+
+maintainer: LysineOS Team <team@lysine-os.org>
+tags: [time, core]

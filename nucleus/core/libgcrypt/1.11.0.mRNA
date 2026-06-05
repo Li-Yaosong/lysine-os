@@ -11,7 +11,7 @@ depends:
     - libgpg-error
 sources:
   - url: https://www.gnupg.org/ftp/gcrypt/libgcrypt/libgcrypt-1.11.0.tar.bz2
-    hash: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    hash: sha256:09120c9867ce7f2081d6aaa1775386b98c2f2f246135761aae47d81f58685b9c
 build:
   prepare: |
     ./configure --prefix=/usr --disable-static

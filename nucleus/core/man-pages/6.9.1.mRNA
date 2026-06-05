@@ -7,7 +7,7 @@ homepage: https://www.kernel.org/doc/man-pages/
 license: MIT
 sources:
   - url: https://kernel.org/pub/linux/docs/man-pages/man-pages-6.9.1.tar.xz
-    hash: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    hash: sha256:e23cbac29f110ba571f0da8523e79d373691466ed7f2a31301721817d34530bd
 build:
   install: |
     make DESTDIR="$DESTDIR" install

@@ -14,7 +14,7 @@ depends:
     - attr
 sources:
   - url: https://github.com/shadow-maint/shadow/releases/download/4.16.0/shadow-4.16.0.tar.xz
-    hash: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    hash: sha256:b78e3921a95d53282a38e90628880624736bf6235e36eea50c50835f59a3530b
 build:
   prepare: |
     ./configure --prefix=/usr --with-group-name-max-length=32

@@ -1,0 +1,31 @@
+api-version: 1
+name: groff
+version: "1.23.0"
+release: 1
+
+description: Document formatting system (troff/nroff)
+homepage: https://www.gnu.org/software/groff/
+license: GPL-3.0-or-later
+
+depends:
+  build:
+    - glibc
+    - gcc
+  runtime:
+    - glibc
+    - perl
+
+sources:
+  - url: https://ftp.gnu.org/gnu/groff/groff-1.23.0.tar.gz
+    hash: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+
+build:
+  prepare: |
+    PAGE=A4 ./configure --prefix=/usr
+  compile: |
+    make -j1
+  install: |
+    make DESTDIR="$DESTDIR" install
+
+maintainer: LysineOS Team <team@lysine-os.org>
+tags: [documentation, core]

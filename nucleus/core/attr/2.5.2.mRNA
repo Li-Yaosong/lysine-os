@@ -10,7 +10,7 @@ depends:
     - glibc
 sources:
   - url: https://download.savannah.nongnu.org/releases/attr/attr-2.5.2.tar.xz
-    hash: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    hash: sha256:f2e97b0ab7ce293681ab701915766190d607a1dba7fae8a718138150b700a70b
 build:
   prepare: |
     ./configure --prefix=/usr --disable-static

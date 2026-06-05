@@ -10,7 +10,7 @@ depends:
     - glibc
 sources:
   - url: https://dist.libuv.org/dist/v1.49.2/libuv-v1.49.2.tar.gz
-    hash: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    hash: sha256:8c10706bd2cf129045c42b94799a92df9aaa75d05f07e99cf083507239bae5a8
 build:
   prepare: |
     ./configure --prefix=/usr

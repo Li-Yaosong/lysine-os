@@ -1,0 +1,32 @@
+api-version: 1
+name: file
+version: "5.45"
+release: 1
+
+description: File type identification utility
+homepage: https://www.darwinsys.com/file/
+license: BSD-2-Clause
+
+depends:
+  build:
+    - glibc
+  runtime:
+    - glibc
+    - zlib
+
+sources:
+  - url: https://astron.com/pub/file/file-5.45.tar.gz
+    hash: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+
+build:
+  prepare: |
+    ./configure --prefix=/usr
+  compile: |
+    make -j$(nproc)
+  check: |
+    make check
+  install: |
+    make DESTDIR="$DESTDIR" install
+
+maintainer: LysineOS Team <team@lysine-os.org>
+tags: [utility, core]

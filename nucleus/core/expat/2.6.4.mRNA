@@ -10,7 +10,7 @@ depends:
     - glibc
 sources:
   - url: https://github.com/libexpat/libexpat/releases/download/R_2_6_4/expat-2.6.4.tar.xz
-    hash: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    hash: sha256:a695629dae047055b37d50a0ff4776d1d45d0a4c842cf4ccee158441f55ff7ee
 build:
   prepare: |
     ./configure --prefix=/usr --disable-static

@@ -12,7 +12,7 @@ depends:
     - openssl
 sources:
   - url: https://kernel.org/pub/linux/utils/kernel/kmod/kmod-33.tar.xz
-    hash: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    hash: sha256:dc768b3155172091f56dc69430b5481f2d76ecd9ccb54ead8c2540dbcf5ea9bc
 build:
   prepare: |
     ./configure --prefix=/usr --disable-static --with-openssl

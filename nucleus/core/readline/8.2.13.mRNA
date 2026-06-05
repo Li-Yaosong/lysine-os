@@ -10,8 +10,8 @@ depends:
     - glibc
     - ncurses
 sources:
-  - url: https://ftp.gnu.org/gnu/readline/readline-8.2.13.tar.xz
-    hash: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+  - url: https://ftp.gnu.org/gnu/readline/readline-8.2.tar.gz
+    hash: sha256:3feb7171f16a84ee82ca18a36d7b9be109a52c04f492a053331d7d1095007c35
 build:
   prepare: |
     ./configure --prefix=/usr --with-curses

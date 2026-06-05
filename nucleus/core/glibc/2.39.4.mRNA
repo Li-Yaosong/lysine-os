@@ -23,7 +23,7 @@ features:
 
 sources:
   - url: https://ftp.gnu.org/gnu/glibc/glibc-2.39.4.tar.xz
-    hash: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    hash: sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
 
 build:
   prepare: |

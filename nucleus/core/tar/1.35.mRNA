@@ -12,7 +12,7 @@ depends:
     - attr
 sources:
   - url: https://ftp.gnu.org/gnu/tar/tar-1.35.tar.xz
-    hash: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    hash: sha256:4d62ff37342ec7aed748535323930c7cf94acf71c3591882b26a7ea50f3edc16
 build:
   prepare: |
     ./configure --prefix=/usr --disable-static

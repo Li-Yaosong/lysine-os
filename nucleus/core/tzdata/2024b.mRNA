@@ -13,7 +13,7 @@ depends:
 
 sources:
   - url: https://www.iana.org/time-zones/repository/releases/tzdata2024b.tar.gz
-    hash: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    hash: sha256:70e754db126a8d0db3d16d6b4cb5f7ec1e04d5f261255e4558a67fe92d39e550
 
 build:
   prepare: |

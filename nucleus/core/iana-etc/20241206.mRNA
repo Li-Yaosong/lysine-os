@@ -8,8 +8,8 @@ homepage: https://www.iana.org/protocols
 license: OFL-1.1
 
 sources:
-  - url: https://github.com/Mic92/iana-etc/releases/download/20241206/iana-etc-20241206.tar.xz
-    hash: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+  - url: https://github.com/Mic92/iana-etc/archive/refs/tags/20241206.tar.gz
+    hash: sha256:c6d43cce67d3adfac9d5b5ff06ff7dd4c716ecb8f9430d1fab5f732507dd4bf9
 
 build:
   install: |

@@ -11,7 +11,7 @@ depends:
     - perl
 sources:
   - url: https://ftp.gnu.org/gnu/texinfo/texinfo-7.1.tar.xz
-    hash: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    hash: sha256:deeec9f19f159e046fdf8ad22231981806dac332cc372f1c763504ad82b30953
 build:
   prepare: |
     ./configure --prefix=/usr

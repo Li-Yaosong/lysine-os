@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use tracing::info;
 
 use crate::error::{RepositoryError, Result};
-use crate::index::{RepositoryIndex, IndexEntry};
+use crate::index::{IndexEntry, RepositoryIndex};
 
 /// Represents an opened or created nucleus repository on disk.
 pub struct Repository {
@@ -83,7 +83,10 @@ impl Repository {
         if !CATEGORIES.contains(&category) {
             return Err(RepositoryError::InvalidPackage {
                 path: prot_path.to_path_buf(),
-                reason: format!("invalid category '{category}', must be one of: {}", CATEGORIES.join(", ")),
+                reason: format!(
+                    "invalid category '{category}', must be one of: {}",
+                    CATEGORIES.join(", ")
+                ),
             });
         }
 
@@ -191,9 +194,7 @@ impl Repository {
                     .to_string();
 
                 let sha256 = hash_file(&path)?;
-                let installed_size = std::fs::metadata(&path)
-                    .map(|m| m.len())
-                    .unwrap_or(0);
+                let installed_size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
 
                 let stem = &filename[..filename.len() - 5];
                 let parsed = parse_prot_filename(stem);
@@ -282,7 +283,11 @@ fn extract_name(name_ver: &str) -> String {
     // Find the last '-' followed by a digit (start of version).
     let mut last_split = 0;
     for (i, c) in name_ver.char_indices() {
-        if c == '-' && name_ver.get(i + 1..).map_or(false, |s| s.starts_with(char::is_numeric)) {
+        if c == '-'
+            && name_ver
+                .get(i + 1..)
+                .is_some_and(|s| s.starts_with(char::is_numeric))
+        {
             last_split = i;
         }
     }
@@ -297,7 +302,11 @@ fn extract_name(name_ver: &str) -> String {
 fn extract_version(name_ver: &str) -> String {
     let mut last_split = 0;
     for (i, c) in name_ver.char_indices() {
-        if c == '-' && name_ver.get(i + 1..).map_or(false, |s| s.starts_with(char::is_numeric)) {
+        if c == '-'
+            && name_ver
+                .get(i + 1..)
+                .is_some_and(|s| s.starts_with(char::is_numeric))
+        {
             last_split = i;
         }
     }
@@ -349,7 +358,10 @@ mod tests {
     fn extract_name_version_separation() {
         assert_eq!(extract_name("bash-5.2.37"), "bash");
         assert_eq!(extract_version("bash-5.2.37"), "5.2.37");
-        assert_eq!(extract_name("linux-api-headers-6.18.0"), "linux-api-headers");
+        assert_eq!(
+            extract_name("linux-api-headers-6.18.0"),
+            "linux-api-headers"
+        );
         assert_eq!(extract_version("linux-api-headers-6.18.0"), "6.18.0");
     }
 

@@ -1,6 +1,6 @@
-use anyhow::Result;
 use crate::config::LysinConfig;
 use crate::db::LocalDb;
+use anyhow::Result;
 
 /// List all installed packages.
 pub async fn list(config: &LysinConfig) -> Result<()> {
@@ -12,7 +12,7 @@ pub async fn list(config: &LysinConfig) -> Result<()> {
         return Ok(());
     }
 
-    println!("{:<30} {:<15} {:<5} {}", "Name", "Version", "Rel", "Origin");
+    println!("{:<30} {:<15} {:<5} Origin", "Name", "Version", "Rel");
     println!("{}", "-".repeat(75));
     for pkg in db.list() {
         println!(

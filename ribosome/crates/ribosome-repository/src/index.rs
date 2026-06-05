@@ -190,6 +190,7 @@ impl RepositoryIndex {
 
 /// Build an IndexEntry from a .prot package's built-in metadata.
 /// This extracts the necessary fields from the package's META/ contents.
+#[allow(clippy::too_many_arguments)]
 pub fn build_index_entry(
     name: &str,
     version: &str,

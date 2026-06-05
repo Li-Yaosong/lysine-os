@@ -150,8 +150,7 @@ impl DependencyGraph {
         }
 
         // Topological sort the full graph, then filter to only our visited set.
-        let topo = petgraph::algo::toposort(&self.graph, None)
-            .unwrap_or_default();
+        let topo = petgraph::algo::toposort(&self.graph, None).unwrap_or_default();
 
         let order: Vec<String> = topo
             .into_iter()
@@ -209,9 +208,9 @@ impl DependencyGraph {
         let mut safe = Vec::new();
         for &name in names {
             let reverse_deps = self.reverse_dependencies(name);
-            let blocked = reverse_deps.iter().any(|dep| {
-                installed.contains(&dep.as_str()) && !name_set.contains(dep.as_str())
-            });
+            let blocked = reverse_deps
+                .iter()
+                .any(|dep| installed.contains(&dep.as_str()) && !name_set.contains(dep.as_str()));
             if !blocked {
                 safe.push(name.to_string());
             }

@@ -1,7 +1,7 @@
-pub mod install;
-pub mod remove;
-pub mod list;
-pub mod info;
-pub mod search;
 pub mod deps;
+pub mod info;
+pub mod install;
+pub mod list;
+pub mod remove;
+pub mod search;
 pub mod update;

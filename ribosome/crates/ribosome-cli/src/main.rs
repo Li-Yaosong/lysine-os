@@ -306,11 +306,7 @@ fn cmd_repo(action: RepoAction) -> Result<()> {
         } => {
             let repository = ribosome_repository::Repository::open(&repo)?;
             repository.publish(&package, &category)?;
-            println!(
-                "Published {} to {}",
-                package.display(),
-                repo.display()
-            );
+            println!("Published {} to {}", package.display(), repo.display());
             Ok(())
         }
         RepoAction::Reindex { path } => {

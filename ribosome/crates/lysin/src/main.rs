@@ -28,9 +28,7 @@ struct Cli {
 #[derive(clap::Subcommand)]
 enum Commands {
     /// Install a package
-    Install {
-        package: String,
-    },
+    Install { package: String },
     /// Remove a package
     Remove {
         package: String,
@@ -41,31 +39,21 @@ enum Commands {
     /// Update all packages
     Update,
     /// Search for a package
-    Search {
-        keyword: String,
-    },
+    Search { keyword: String },
     /// Show package information
-    Info {
-        package: String,
-    },
+    Info { package: String },
     /// List installed packages
     List,
     /// Show dependency tree
-    Deps {
-        package: String,
-    },
+    Deps { package: String },
     /// Show operation history
     History,
     /// Rollback to a snapshot
-    Rollback {
-        snapshot: String,
-    },
+    Rollback { snapshot: String },
     /// Remove orphaned dependencies
     Autoremove,
     /// Show package build provenance
-    Provenance {
-        package: String,
-    },
+    Provenance { package: String },
 }
 
 #[tokio::main]

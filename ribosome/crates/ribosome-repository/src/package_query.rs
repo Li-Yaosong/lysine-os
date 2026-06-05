@@ -40,9 +40,7 @@ impl<'a> PackageQuery<'a> {
         for name in names {
             if let Some(entry) = self.index.find(name) {
                 for dep in &entry.depends.runtime {
-                    let dep_name = dep
-                        .split_once(' ')
-                        .map_or(dep.as_str(), |(n, _)| n);
+                    let dep_name = dep.split_once(' ').map_or(dep.as_str(), |(n, _)| n);
                     if self.index.find(dep_name).is_none() {
                         issues.push(DependencyIssue {
                             package: name.to_string(),

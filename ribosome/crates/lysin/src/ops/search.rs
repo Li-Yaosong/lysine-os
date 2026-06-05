@@ -19,10 +19,7 @@ pub async fn search(keyword: &str, config: &LysinConfig) -> Result<()> {
         let results = query.search(keyword);
         for info in &results {
             let e = &info.entry;
-            println!(
-                "{:<30} {:<15} {}",
-                e.name, e.version, e.description
-            );
+            println!("{:<30} {:<15} {}", e.name, e.version, e.description);
         }
         total += results.len();
     }

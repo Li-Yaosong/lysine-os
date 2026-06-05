@@ -75,8 +75,8 @@ async fn install_single(
     }
 
     // Extract to install root.
-    let extracted = unpack(&prot_path, &config.root)
-        .context(format!("unpacking {}", prot_path.display()))?;
+    let extracted =
+        unpack(&prot_path, &config.root).context(format!("unpacking {}", prot_path.display()))?;
 
     let file_list: Vec<String> = extracted
         .iter()
@@ -125,8 +125,8 @@ fn find_package_in_repos(
 fn hash_file(path: &std::path::Path) -> Result<String> {
     use sha2::{Digest, Sha256};
     let mut hasher = Sha256::new();
-    let mut file = std::fs::File::open(path)
-        .with_context(|| format!("opening {}", path.display()))?;
+    let mut file =
+        std::fs::File::open(path).with_context(|| format!("opening {}", path.display()))?;
     std::io::copy(&mut file, &mut hasher)?;
     let result = hasher.finalize();
     Ok(format!("sha256:{result:x}"))

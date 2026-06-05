@@ -9,7 +9,9 @@ pub async fn remove(name: &str, config: &LysinConfig, force: bool) -> Result<()>
     let mut db = LocalDb::new(&config.db_path);
     db.load()?;
 
-    let pkg = db.find(name).context(format!("package '{name}' is not installed"))?;
+    let pkg = db
+        .find(name)
+        .context(format!("package '{name}' is not installed"))?;
 
     info!(package = name, "removing");
     println!("Removing {}-{}...", pkg.name, pkg.version);

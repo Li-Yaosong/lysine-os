@@ -39,5 +39,8 @@ pub async fn info(name: &str, config: &LysinConfig) -> Result<()> {
         }
     }
 
-    bail!("package '{}' not found (not installed, not in any repository)", name)
+    bail!(
+        "package '{}' not found (not installed, not in any repository)",
+        name
+    )
 }

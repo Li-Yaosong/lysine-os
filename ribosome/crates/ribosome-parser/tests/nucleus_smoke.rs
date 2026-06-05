@@ -2,7 +2,7 @@ use std::path::Path;
 
 use ribosome_parser::parse_mrna_file;
 
-/// Smoke test: all 20 nucleus mRNA files should parse and validate successfully.
+/// Smoke test: all nucleus mRNA files should parse and validate successfully.
 #[test]
 fn nucleus_core_packages_all_parse() {
     let nucleus_dir = Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -38,8 +38,8 @@ fn nucleus_core_packages_all_parse() {
         assert!(!mrna.sources.is_empty(), "{label}: no sources");
         count += 1;
     }
-    assert_eq!(
-        count, 20,
-        "expected exactly 20 nucleus mRNA files, got {count}"
+    assert!(
+        count >= 70,
+        "expected at least 70 nucleus mRNA files, got {count}"
     );
 }

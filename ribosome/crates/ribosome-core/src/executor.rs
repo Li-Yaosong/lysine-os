@@ -107,12 +107,12 @@ impl BuildExecutor {
             "build phases completed successfully"
         );
 
-        // Auto-pack into .protein
+        // Auto-pack into .prot
         let (protein, pack_error) = match Self::pack_result(ctx, &total) {
             Ok(p) => (Some(p), None),
             Err(e) => {
                 let msg = format!("{e}");
-                warn!(error = %msg, "packing failed — build phases succeeded but .protein was not created");
+                warn!(error = %msg, "packing failed — build phases succeeded but .prot was not created");
                 (None, Some(msg))
             }
         };
@@ -352,13 +352,13 @@ build:
             "transcript should have header"
         );
 
-        // Verify .protein was created
+        // Verify .prot was created
         assert!(
             result.protein.is_some(),
             "protein should be packed after successful build"
         );
         let protein = result.protein.as_ref().unwrap();
-        assert!(protein.path.exists(), ".protein file should exist");
+        assert!(protein.path.exists(), ".prot file should exist");
         assert!(protein.sha256.starts_with("sha256:"));
         assert!(protein.file_count > 0, "should have packed at least 1 file");
     }

@@ -54,6 +54,36 @@ enum Commands {
         /// Package to inspect
         package: String,
     },
+    /// Repository management commands
+    Repo {
+        #[command(subcommand)]
+        action: RepoAction,
+    },
+}
+
+#[derive(clap::Subcommand)]
+enum RepoAction {
+    /// Initialize a new empty repository
+    Init {
+        /// Path for the new repository
+        path: PathBuf,
+    },
+    /// Publish a .prot package to a repository
+    Publish {
+        /// Path to the .prot file to publish
+        package: PathBuf,
+        /// Repository root path
+        #[arg(long)]
+        repo: PathBuf,
+        /// Package category (core, devel, desktop, ai, extra)
+        #[arg(long, default_value = "core")]
+        category: String,
+    },
+    /// Rebuild the repository index from existing .prot files
+    Reindex {
+        /// Repository root path
+        path: PathBuf,
+    },
 }
 
 fn main() -> ExitCode {
@@ -89,6 +119,7 @@ fn run() -> Result<()> {
             tracing::info!("Package info: {package}");
             bail!("info not implemented in Sprint 1");
         }
+        Commands::Repo { action } => cmd_repo(action),
     }
 }
 
@@ -254,5 +285,39 @@ fn format_size(bytes: u64) -> String {
         format!("{} KiB", bytes / 1024)
     } else {
         format!("{} MiB", bytes / (1024 * 1024))
+    }
+}
+
+fn cmd_repo(action: RepoAction) -> Result<()> {
+    match action {
+        RepoAction::Init { path } => {
+            let repo = ribosome_repository::Repository::create(&path)?;
+            println!("Initialized empty repository at {}", path.display());
+            for cat in ribosome_repository::CATEGORIES {
+                println!("  created: {}/", cat);
+            }
+            drop(repo);
+            Ok(())
+        }
+        RepoAction::Publish {
+            package,
+            repo,
+            category,
+        } => {
+            let repository = ribosome_repository::Repository::open(&repo)?;
+            repository.publish(&package, &category)?;
+            println!(
+                "Published {} to {}",
+                package.display(),
+                repo.display()
+            );
+            Ok(())
+        }
+        RepoAction::Reindex { path } => {
+            let repo = ribosome_repository::Repository::open(&path)?;
+            let count = repo.rebuild_index()?;
+            println!("Rebuilt index: {} packages in {}", count, path.display());
+            Ok(())
+        }
     }
 }

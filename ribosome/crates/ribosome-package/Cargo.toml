@@ -1,6 +1,6 @@
 [package]
 name = "ribosome-package"
-description = ".protein package format handling for Ribosome"
+description = ".prot package format handling for Ribosome"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

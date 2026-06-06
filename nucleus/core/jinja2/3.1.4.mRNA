@@ -1,0 +1,22 @@
+api-version: 1
+name: jinja2
+version: 3.1.4
+release: 1
+description: Fast and easy to use template engine for Python
+homepage: https://palletsprojects.com/p/jinja/
+license: BSD-3-Clause
+depends:
+  build:
+    - python3
+    - markupsafe
+  runtime:
+    - python3
+    - markupsafe
+sources:
+  - url: https://files.pythonhosted.org/packages/source/J/Jinja2/jinja2-3.1.4.tar.gz
+    hash: sha256:4a3aee7acbbe7303aede8e9648d13b8bf88a429282aa6122a993f0ac800cb369
+build:
+  prepare: |
+    python3 setup.py build
+  install: |
+    python3 setup.py install --root="$DESTDIR" --prefix=/usr

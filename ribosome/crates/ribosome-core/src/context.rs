@@ -35,7 +35,7 @@ impl std::fmt::Display for BuildPhase {
 pub struct BuildConfig {
     /// Root directory for all build artifacts.
     pub build_root: PathBuf,
-    /// Directory for .protein package output (vacuole cache).
+    /// Directory for .prot package output (vacuole cache).
     pub cache_dir: PathBuf,
     /// Number of parallel jobs (e.g. make -j).
     pub jobs: usize,
@@ -164,14 +164,14 @@ pub struct BuildResult {
     pub phases: Vec<PhaseResult>,
     pub dest_dir: PathBuf,
     pub total_duration: std::time::Duration,
-    /// .protein package output, if build succeeded and pack succeeded.
+    /// .prot package output, if build succeeded and pack succeeded.
     pub protein: Option<ProteinOutput>,
     /// Error message when the build phases succeeded but packing failed.
     /// When present, `success` is `false` and `protein` is `None`.
     pub pack_error: Option<String>,
 }
 
-/// Information about the produced .protein package.
+/// Information about the produced .prot package.
 #[derive(Debug)]
 pub struct ProteinOutput {
     pub path: PathBuf,

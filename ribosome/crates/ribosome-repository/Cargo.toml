@@ -11,7 +11,15 @@ authors.workspace = true
 [dependencies]
 ribosome-core = { path = "../ribosome-core" }
 ribosome-package = { path = "../ribosome-package" }
+ribosome-parser = { path = "../ribosome-parser" }
 serde = { workspace = true }
+serde_json = { workspace = true }
 thiserror = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }
+chrono = { workspace = true }
+sha2 = { workspace = true }
+walkdir = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3.0"

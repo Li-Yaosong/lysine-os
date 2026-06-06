@@ -1,0 +1,21 @@
+api-version: 1
+name: iana-etc
+version: "20241206"
+release: 1
+
+description: Network services and protocols database
+homepage: https://www.iana.org/protocols
+license: OFL-1.1
+
+sources:
+  - url: https://github.com/Mic92/iana-etc/archive/refs/tags/20241206.tar.gz
+    hash: sha256:c6d43cce67d3adfac9d5b5ff06ff7dd4c716ecb8f9430d1fab5f732507dd4bf9
+
+build:
+  install: |
+    install -d "$DESTDIR/etc"
+    install -m 644 services "$DESTDIR/etc/services"
+    install -m 644 protocols "$DESTDIR/etc/protocols"
+
+maintainer: LysineOS Team <team@lysine-os.org>
+tags: [network, core]

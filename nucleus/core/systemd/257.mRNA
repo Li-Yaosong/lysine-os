@@ -40,7 +40,7 @@ features:
 
 sources:
   - url: https://github.com/systemd/systemd/archive/refs/tags/v257.tar.gz
-    hash: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    hash: sha256:14f6907eb5e289d8c39cbe1ef891ca54d8a0e3582c986a9ef5844b3f29add43b
 
 build:
   prepare: |

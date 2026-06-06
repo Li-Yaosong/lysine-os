@@ -1,0 +1,20 @@
+api-version: 1
+name: gettext
+version: 0.22.5
+release: 1
+description: GNU internationalization utilities
+homepage: https://www.gnu.org/software/gettext/
+license: GPL-3.0-or-later
+depends:
+  runtime:
+    - glibc
+sources:
+  - url: https://ftp.gnu.org/gnu/gettext/gettext-0.22.5.tar.xz
+    hash: sha256:fe10c37353213d78a5b83d48af231e005c4da84db5ce88037d88355938259640
+build:
+  prepare: |
+    ./configure --prefix=/usr --disable-csharp --docdir=/usr/share/doc/gettext-0.22.5
+  compile: |
+    make -j$NPROC
+  install: |
+    make DESTDIR="$DESTDIR" install

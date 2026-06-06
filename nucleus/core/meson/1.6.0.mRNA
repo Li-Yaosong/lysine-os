@@ -1,0 +1,21 @@
+api-version: 1
+name: meson
+version: 1.6.0
+release: 1
+description: Open source build system designed for speed and correctness
+homepage: https://mesonbuild.com/
+license: Apache-2.0
+depends:
+  build:
+    - python3
+  runtime:
+    - glibc
+    - python3
+sources:
+  - url: https://github.com/mesonbuild/meson/releases/download/1.6.0/meson-1.6.0.tar.gz
+    hash: sha256:999b65f21c03541cf11365489c1fad22e2418bb0c3d50ca61139f2eec09d5496
+build:
+  prepare: |
+    python3 setup.py build
+  install: |
+    python3 setup.py install --root="$DESTDIR" --prefix=/usr

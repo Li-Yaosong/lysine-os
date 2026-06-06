@@ -97,7 +97,7 @@ graph TB
 | 构建引擎     | **ribosome**   | 核糖体      | 核心构建守护进程   |
 | 构建描述文件   | **mRNA**       | 信使RNA    | 包的构建配方     |
 | 包管理器 CLI | **lysin**      | 赖氨酸的化学简称 | 安装/卸载/查询包  |
-| 二进制包格式   | **.protein**   | 蛋白质      | 编译好的包文件    |
+| 二进制包格式   | **.prot**       | 蛋白质      | 编译好的包文件    |
 | 包仓库      | **nucleus**    | 细胞核      | 软件仓库服务器    |
 | 沙箱隔离     | **membrane**   | 细胞膜      | 构建沙箱隔离层    |
 | 依赖图      | **genome**     | 基因组      | 所有包的依赖关系图谱 |
@@ -251,11 +251,11 @@ flowchart TB
         dep_solver[依赖求解器<br/>genome DAG]
         sandbox[membrane 沙箱<br/>命名空间隔离]
         builder[构建执行器<br/>prepare/compile/check/install]
-        packager[打包器<br/>生成 .protein]
+        packager[打包器<br/>生成 .prot]
     end
 
     subgraph output [输出]
-        protein[.protein 包文件]
+        protein[.prot 包文件]
         transcript[构建日志 transcript]
         hash_db[内容寻址数据库]
     end
@@ -353,12 +353,12 @@ mitosis diff @sn1 @sn2                   # 对比差异
 
 仓库分层：`core`（核心系统）、`devel`（开发工具）、`desktop`（桌面环境）、`ai`（AI 组件）、`extra`（额外应用）、`testing`（测试中）。
 
-支持二进制 .protein 包 + mRNA 源码描述、多仓库、GPG/Minisign 签名、增量更新。
+支持二进制 .prot 包 + mRNA 源码描述、多仓库、GPG/Minisign 签名、增量更新。
 
-### 1.5 .protein 包格式
+### 1.5 .prot 包格式
 
 ```
-gcc-14.2.0-1-x86_64.protein (tar.zst)
+gcc-14.2.0-1-x86_64.prot (tar.zst)
 ├── META/                    # 包元数据
 │   ├── mRNA.yml             # 构建描述（溯源）
 │   ├── manifest.txt         # 文件清单 + 哈希
@@ -389,7 +389,7 @@ flowchart LR
         dep_resolve[依赖解析 genome DAG]
         sandbox_create[创建 membrane 沙箱]
         parallel_build[并行构建<br/>prepare-compile-check-install]
-        package[打包 .protein]
+        package[打包 .prot]
         test_install[安装测试 容器验证]
         repro_test[可复现性测试 二次构建对比]
         sign[仓库签名]
@@ -544,7 +544,7 @@ lysine-os/
 │   │   ├── ribosome-parser/        # mRNA YAML 解析器
 │   │   ├── ribosome-deps/          # genome 依赖图引擎
 │   │   ├── ribosome-sandbox/       # membrane 沙箱管理
-│   │   ├── ribosome-package/       # .protein 打包/解包
+│   │   ├── ribosome-package/       # .prot 打包/解包
 │   │   ├── ribosome-repository/    # nucleus 仓库管理
 │   │   ├── ribosome-snapshot/      # mitosis 快照管理
 │   │   └── lysin/                  # 包管理器 CLI
@@ -639,7 +639,7 @@ lysine-os/
 - Ribosome Rust 项目初始化（workspace + crate 结构）
 - mRNA YAML 解析器（ribosome-parser）
 - 基础构建执行器（prepare/compile/install 三阶段）
-- 简单的 .protein 打包器（tar.zst）
+- 简单的 .prot 打包器（tar.zst）
 - 手动编写前 20 个核心包的 mRNA 文件（LFS 阶段 5-6）
 
 **Sprint 2（2-3 周）：包管理与依赖**

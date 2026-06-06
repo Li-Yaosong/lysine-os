@@ -1,0 +1,21 @@
+api-version: 1
+name: elfutils
+version: 0.192
+release: 1
+description: ELF object file tools and libraries
+homepage: https://sourceware.org/elfutils/
+license: GPL-2.0-or-later
+depends:
+  runtime:
+    - glibc
+    - zlib
+sources:
+  - url: https://sourceware.org/elfutils/ftp/0.192/elfutils-0.192.tar.bz2
+    hash: sha256:616099beae24aba11f9b63d86ca6cc8d566d968b802391334c91df54eab416b4
+build:
+  prepare: |
+    ./configure --prefix=/usr --disable-debuginfod
+  compile: |
+    make -j$NPROC
+  install: |
+    make DESTDIR="$DESTDIR" install

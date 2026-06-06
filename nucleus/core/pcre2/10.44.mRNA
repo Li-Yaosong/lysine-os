@@ -1,0 +1,20 @@
+api-version: 1
+name: pcre2
+version: 10.44
+release: 1
+description: Perl-compatible regular expression library
+homepage: https://www.pcre.org/
+license: BSD-3-Clause
+depends:
+  runtime:
+    - glibc
+sources:
+  - url: https://github.com/PCRE2Project/pcre2/releases/download/pcre2-10.44/pcre2-10.44.tar.bz2
+    hash: sha256:d34f02e113cf7193a1ebf2770d3ac527088d485d4e047ed10e5d217c6ef5de96
+build:
+  prepare: |
+    ./configure --prefix=/usr --enable-pcre2-16 --enable-pcre2-32 --enable-pcre2grep-libz --enable-pcre2grep-libbz2
+  compile: |
+    make -j$NPROC
+  install: |
+    make DESTDIR="$DESTDIR" install

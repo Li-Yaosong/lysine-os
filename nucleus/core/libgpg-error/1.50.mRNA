@@ -1,0 +1,20 @@
+api-version: 1
+name: libgpg-error
+version: 1.50
+release: 1
+description: Error codes and descriptions for GnuPG components
+homepage: https://www.gnupg.org/
+license: GPL-2.0-or-later
+depends:
+  runtime:
+    - glibc
+sources:
+  - url: https://www.gnupg.org/ftp/gcrypt/libgpg-error/libgpg-error-1.50.tar.bz2
+    hash: sha256:69405349e0a633e444a28c5b35ce8f14484684518a508dc48a089992fe93e20a
+build:
+  prepare: |
+    ./configure --prefix=/usr --disable-static
+  compile: |
+    make -j$NPROC
+  install: |
+    make DESTDIR="$DESTDIR" install

@@ -24,7 +24,7 @@ LysineOS uses a custom build system named **Ribosome**, inspired by the biologic
 | Build Engine | `ribosome` | Core build daemon (Rust) |
 | Build Recipe | `mRNA` | Declarative YAML build descriptions |
 | Package Manager | `lysin` | Install/remove/query packages |
-| Binary Package | `.protein` | Compiled package format |
+| Binary Package | `.prot` | Compiled package format |
 | Repository | `nucleus` | Software repository server |
 | Build Sandbox | `membrane` | Namespace/cgroup isolation |
 | Dependency Graph | `genome` | DAG-based dependency resolution |

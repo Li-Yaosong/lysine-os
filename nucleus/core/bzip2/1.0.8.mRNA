@@ -1,0 +1,21 @@
+api-version: 1
+name: bzip2
+version: 1.0.8
+release: 1
+description: Block-sorting file compressor
+homepage: https://sourceware.org/bzip2/
+license: bzip2-1.0.6
+depends:
+  runtime:
+    - glibc
+sources:
+  - url: https://sourceware.org/pub/bzip2/bzip2-1.0.8.tar.gz
+    hash: sha256:ab5a03176ee106d3f0fa90e381da478ddae405918153cca248e682cd0c4a2269
+build:
+  prepare: |
+    make -f Makefile-libbz2_so CC="gcc $CFLAGS"
+  compile: |
+    make clean
+    make CC="gcc $CFLAGS"
+  install: |
+    make PREFIX="$DESTDIR/usr" install

@@ -6,7 +6,7 @@ use walkdir::WalkDir;
 
 use crate::error::{PackageError, Result};
 
-/// Metadata for a .protein package being created.
+/// Metadata for a .prot package being created.
 pub struct PackageMeta {
     pub name: String,
     pub version: String,
@@ -28,11 +28,11 @@ pub struct PackResult {
     pub size_bytes: u64,
 }
 
-/// Create a `.protein` package from a DESTDIR staging directory.
+/// Create a `.prot` package from a DESTDIR staging directory.
 ///
 /// The resulting tar.zst archive follows the layout:
 /// ```text
-/// <name>-<version>-<release>-<arch>.protein (tar.zst)
+/// <name>-<version>-<release>-<arch>.prot (tar.zst)
 /// ├── META/
 /// │   ├── mRNA.yml
 /// │   ├── manifest.txt      (file list + sha256)
@@ -48,13 +48,13 @@ pub fn pack(dest_dir: &Path, meta: &PackageMeta, output_dir: &Path) -> Result<Pa
     std::fs::create_dir_all(output_dir)?;
 
     let filename = format!(
-        "{}-{}-{}-{}.protein",
+        "{}-{}-{}-{}.prot",
         meta.name, meta.version, meta.release, meta.arch
     );
     let output_path = output_dir.join(&filename);
-    let tmp_path = output_path.with_extension("protein.tmp");
+    let tmp_path = output_path.with_extension("prot.tmp");
 
-    info!(package = %meta.name, version = %meta.version, "packing .protein");
+    info!(package = %meta.name, version = %meta.version, "packing .prot");
 
     let file = std::fs::File::create(&tmp_path)?;
     let encoder = zstd::Encoder::new(file, 3)?;
@@ -116,7 +116,7 @@ pub fn pack(dest_dir: &Path, meta: &PackageMeta, output_dir: &Path) -> Result<Pa
         files = file_count,
         size = size_bytes,
         sha256 = &sha256[..16],
-        "packed .protein"
+        "packed .prot"
     );
 
     Ok(PackResult {
@@ -127,7 +127,7 @@ pub fn pack(dest_dir: &Path, meta: &PackageMeta, output_dir: &Path) -> Result<Pa
     })
 }
 
-/// Extract a `.protein` package to a target directory.
+/// Extract a `.prot` package to a target directory.
 ///
 /// Only the `FILES/` prefix is extracted — META and SCRIPTS are skipped.
 /// Returns the list of extracted file paths.
@@ -136,10 +136,10 @@ pub fn pack(dest_dir: &Path, meta: &PackageMeta, output_dir: &Path) -> Result<Pa
 ///
 /// Rejects archive entries that would escape `target_dir` via `..` traversal
 /// or absolute paths (e.g. `FILES/../../../etc/passwd`).
-pub fn unpack(protein_path: &Path, target_dir: &Path) -> Result<Vec<PathBuf>> {
-    info!(path = %protein_path.display(), "unpacking .protein");
+pub fn unpack(prot_path: &Path, target_dir: &Path) -> Result<Vec<PathBuf>> {
+    info!(path = %prot_path.display(), "unpacking .prot");
 
-    let file = std::fs::File::open(protein_path)?;
+    let file = std::fs::File::open(prot_path)?;
     let decoder = zstd::Decoder::new(file)?;
     let mut archive = tar::Archive::new(decoder);
 
@@ -175,7 +175,7 @@ pub fn unpack(protein_path: &Path, target_dir: &Path) -> Result<Vec<PathBuf>> {
         }
     }
 
-    info!(files = extracted.len(), "unpacked .protein");
+    info!(files = extracted.len(), "unpacked .prot");
     Ok(extracted)
 }
 
@@ -291,6 +291,64 @@ fn hash_file_contents(path: &Path) -> Result<String> {
     Ok(format!("{result:x}"))
 }
 
+/// Metadata extracted from a `.prot` package's `META/` directory.
+#[derive(Debug, Default)]
+pub struct ProtMeta {
+    /// Runtime dependencies parsed from `META/depends.txt`.
+    pub depends_runtime: Vec<String>,
+    /// Build dependencies parsed from `META/depends.txt`.
+    pub depends_build: Vec<String>,
+    /// Raw mRNA YAML content from `META/mRNA.yml`.
+    pub mrna_yaml: Option<String>,
+}
+
+/// Read metadata from a `.prot` package without extracting files.
+///
+/// Scans the archive for `META/depends.txt` and `META/mRNA.yml` entries,
+/// reading them into memory. Does not extract any `FILES/` content.
+pub fn read_meta(prot_path: &Path) -> Result<ProtMeta> {
+    let file = std::fs::File::open(prot_path)?;
+    let decoder = zstd::Decoder::new(file)?;
+    let mut archive = tar::Archive::new(decoder);
+
+    let mut meta = ProtMeta::default();
+
+    for entry in archive.entries()? {
+        let mut entry = entry?;
+        let path = entry.path()?.to_path_buf();
+
+        if path == Path::new("META/depends.txt") {
+            let mut content = String::new();
+            use std::io::Read;
+            entry.read_to_string(&mut content)?;
+            for line in content.lines() {
+                let line = line.trim();
+                if line.is_empty() {
+                    continue;
+                }
+                if let Some(dep) = line.strip_prefix("runtime:") {
+                    let dep = dep.trim().to_string();
+                    if !dep.is_empty() {
+                        meta.depends_runtime.push(dep);
+                    }
+                } else if let Some(dep) = line.strip_prefix("build:") {
+                    let dep = dep.trim().to_string();
+                    if !dep.is_empty() {
+                        meta.depends_build.push(dep);
+                    }
+                }
+            }
+        } else if path == Path::new("META/mRNA.yml") {
+            let mut content = String::new();
+            use std::io::Read;
+            entry.read_to_string(&mut content)?;
+            meta.mrna_yaml = Some(content);
+        }
+    }
+
+    Ok(meta)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -329,7 +387,7 @@ mod tests {
         let result = pack(&dest_dir, &meta, &output_dir).unwrap();
 
         assert!(result.path.exists());
-        assert!(result.path.to_string_lossy().ends_with(".protein"));
+        assert!(result.path.to_string_lossy().ends_with(".prot"));
         assert!(result.sha256.starts_with("sha256:"));
         assert_eq!(result.file_count, 2); // hello + libtest.so
         assert!(result.size_bytes > 0);

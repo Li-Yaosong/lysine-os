@@ -1,0 +1,43 @@
+api-version: 1
+name: python3
+version: 3.13.0
+release: 1
+description: Python programming language interpreter
+homepage: https://www.python.org/
+license: PSF-2.0
+depends:
+  build:
+    - openssl
+    - zlib
+    - ncurses
+    - readline
+    - bzip2
+    - xz
+    - expat
+    - gdbm
+    - libffi
+  runtime:
+    - glibc
+    - openssl
+    - zlib
+    - ncurses
+    - readline
+    - bzip2
+    - xz
+    - expat
+    - libffi
+sources:
+  - url: https://www.python.org/ftp/python/3.13.0/Python-3.13.0.tar.xz
+    hash: sha256:086de5882e3cb310d4dca48457522e2e48018ecd43da9cdf827f6a0759efb07d
+build:
+  prepare: |
+    ./configure --prefix=/usr \
+      --enable-shared \
+      --with-system-ffi \
+      --with-openssl=/usr \
+      --enable-optimizations
+  compile: |
+    make -j$NPROC
+  install: |
+    make DESTDIR="$DESTDIR" install
+    ln -sf python3 "$DESTDIR/usr/bin/python"

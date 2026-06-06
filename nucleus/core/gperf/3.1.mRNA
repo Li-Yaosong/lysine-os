@@ -1,0 +1,32 @@
+api-version: 1
+name: gperf
+version: "3.1"
+release: 1
+
+description: Perfect hash function generator
+homepage: https://www.gnu.org/software/gperf/
+license: GPL-3.0-or-later
+
+depends:
+  build:
+    - gcc
+    - glibc
+  runtime:
+    - glibc
+
+sources:
+  - url: https://ftp.gnu.org/gnu/gperf/gperf-3.1.tar.gz
+    hash: sha256:588546b945bba4b70b6a3a616e80b4ab466e3f33024a352fc2198112cdbb3ae2
+
+build:
+  prepare: |
+    ./configure --prefix=/usr --docdir=/usr/share/doc/gperf-3.1
+  compile: |
+    make -j$(nproc)
+  check: |
+    make -j1 check
+  install: |
+    make DESTDIR="$DESTDIR" install
+
+maintainer: LysineOS Team <team@lysine-os.org>
+tags: [development, core]

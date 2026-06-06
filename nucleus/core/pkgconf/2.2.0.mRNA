@@ -1,0 +1,20 @@
+api-version: 1
+name: pkgconf
+version: 2.2.0
+release: 1
+description: Package configuration tool
+homepage: https://gitea.treehouse.systems/ariadne/pkgconf
+license: ISC
+depends:
+  runtime:
+    - glibc
+sources:
+  - url: https://distfiles.ariadne.space/pkgconf/pkgconf-2.2.0.tar.xz
+    hash: sha256:b06ff63a83536aa8c2f6422fa80ad45e4833f590266feb14eaddfe1d4c853c69
+build:
+  prepare: |
+    ./configure --prefix=/usr --docdir=/usr/share/doc/pkgconf-2.2.0
+  compile: |
+    make -j$NPROC
+  install: |
+    make DESTDIR="$DESTDIR" install

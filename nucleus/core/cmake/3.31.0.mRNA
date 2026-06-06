@@ -1,0 +1,21 @@
+api-version: 1
+name: cmake
+version: 3.31.0
+release: 1
+description: Cross-platform build system generator
+homepage: https://cmake.org/
+license: BSD-3-Clause
+depends:
+  runtime:
+    - glibc
+    - openssl
+sources:
+  - url: https://cmake.org/files/v3.31/cmake-3.31.0.tar.gz
+    hash: sha256:300b71db6d69dcc1ab7c5aae61cbc1aa2778a3e00cbd918bc720203e311468c3
+build:
+  prepare: |
+    ./bootstrap --prefix=/usr --docdir=/share/doc/cmake-3.31 --system-libs
+  compile: |
+    make -j$NPROC
+  install: |
+    make DESTDIR="$DESTDIR" install

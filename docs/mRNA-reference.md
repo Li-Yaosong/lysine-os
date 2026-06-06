@@ -228,7 +228,7 @@ per-package.gcc = ["dlang", "go"]
 
 - 未在任何 output 中声明的文件归入 `main`
 - `files` 支持 glob 模式（`*`、`**`）
-- 每个 output 生成独立的 `.protein` 包
+- 每个 output 生成独立的 `.prot` 包
 - 子包包名格式：`{name}-{output}-{version}`（如 `gcc-lib-14.2.0`）
 
 ---

@@ -149,7 +149,7 @@ ribosome/
 │   ├── ribosome-parser/    # mRNA YAML 解析器（lib）
 │   ├── ribosome-deps/      # genome 依赖图引擎（lib）
 │   ├── ribosome-sandbox/   # membrane 沙箱管理（lib）
-│   ├── ribosome-package/   # .protein 打包/解包（lib）
+│   ├── ribosome-package/   # .prot 打包/解包（lib）
 │   ├── ribosome-repository/# nucleus 仓库管理（lib）
 │   ├── ribosome-snapshot/  # mitosis 快照管理（lib）
 │   └── lysin/              # 包管理器 CLI（bin）

@@ -197,7 +197,7 @@ mod tests {
     fn ordering_consistency() {
         let a = Sha256Digest::from_bytes(b"a");
         let b = Sha256Digest::from_bytes(b"b");
-        // Ordering is deterministic (may be a < b or b < a, but must be consistent)
-        assert_eq!(a < b, !(b < a) || a == b);
+        // Ordering is deterministic: exactly one of a < b, a == b, a > b holds
+        assert_eq!(a.cmp(&b), b.cmp(&a).reverse());
     }
 }

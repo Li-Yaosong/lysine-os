@@ -13,6 +13,7 @@ thiserror = { workspace = true }
 tracing = { workspace = true }
 ribosome-parser = { path = "../ribosome-parser" }
 ribosome-package = { path = "../ribosome-package" }
+ribosome-sandbox = { path = "../ribosome-sandbox" }
 serde = { workspace = true }
 serde_yaml = { workspace = true }
 sha2 = { workspace = true }

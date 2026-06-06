@@ -3,18 +3,18 @@ use std::process::Command;
 
 use tracing::{info, warn};
 
+use ribosome_sandbox::{SandboxConfig, SandboxHandle};
+
 use crate::context::{BuildContext, BuildPhase, BuildResult, PhaseResult};
 use crate::error::{CoreError, Result};
 
 /// Drives the four-phase build lifecycle from a parsed mRNA.
 ///
-/// **SAFETY NOTICE (Sprint 1):**
-/// Build scripts execute directly on the host via `bash -e -c` with **no sandboxing**.
-/// The membrane isolation layer (Linux namespaces + cgroups + Btrfs subvolume) is
-/// planned for Sprint 3. Until then, **only run `ribosome build` with trusted mRNA
-/// files** on development machines — never in CI or shared environments.
+/// When `BuildConfig::sandbox_config` is set, build phases execute inside a
+/// `systemd-nspawn` membrane sandbox with namespace/cgroup isolation.
+/// Otherwise, phases run directly on the host via `bash -e -c` (Sprint 1 mode).
 ///
-/// Sprint 1 does NOT perform: source fetching, patch application, or network isolation.
+/// Sprint 3 adds: membrane sandbox integration, sandboxed phase execution.
 pub struct BuildExecutor;
 
 impl BuildExecutor {
@@ -30,7 +30,22 @@ impl BuildExecutor {
 
         info!(package = %package, version = %version, "starting build");
 
-        ctx.create_dirs()?;
+        // If sandbox is configured, create the sandbox handle and prepare it.
+        // Build the env config early so the handle carries sandbox-internal paths.
+        let sandbox = if ctx.config.sandbox_config.is_some() {
+            let sandbox_config = Self::build_sandbox_env_config(ctx);
+            let handle = SandboxHandle::new(ctx.base_dir.clone(), sandbox_config);
+            handle.create().map_err(|e| CoreError::BuildFailed {
+                package: package.clone(),
+                reason: format!("sandbox creation failed: {e}"),
+            })?;
+            info!(package = %package, "sandbox prepared");
+            Some(handle)
+        } else {
+            // No sandbox — create directories directly (Sprint 1 mode)
+            ctx.create_dirs()?;
+            None
+        };
 
         // Defensive: reject mRNA without build block (should have been caught by parser)
         if ctx.mrna.build.is_none() {
@@ -81,7 +96,7 @@ impl BuildExecutor {
                 }
             };
 
-            let result = Self::run_phase(ctx, *phase, script, &mut transcript)?;
+            let result = Self::run_phase(ctx, *phase, script, &mut transcript, sandbox.as_ref())?;
             if !result.success {
                 warn!(phase = %phase, "build phase failed");
                 let total = start.elapsed();
@@ -182,19 +197,121 @@ impl BuildExecutor {
         })
     }
 
-    /// Execute a single build phase as a shell subprocess.
+    /// Execute a single build phase.
+    ///
+    /// If a sandbox handle is provided, runs inside the nspawn container.
+    /// Otherwise, runs directly on the host via bash (Sprint 1 fallback).
     fn run_phase(
         ctx: &BuildContext,
         phase: BuildPhase,
         script: &str,
         transcript: &mut std::fs::File,
+        sandbox: Option<&SandboxHandle>,
     ) -> Result<PhaseResult> {
         let phase_start = std::time::Instant::now();
-        info!(phase = %phase, "executing");
+        info!(phase = %phase, sandbox = sandbox.is_some(), "executing");
 
         writeln!(transcript, "\n--- phase: {} ({}) ---", phase, chrono_now())
             .map_err(|e| CoreError::io(ctx.transcript_path(), e.to_string()))?;
 
+        let (success, log_output) = match sandbox {
+            Some(handle) => Self::run_phase_sandboxed(ctx, phase, script, handle, transcript)?,
+            None => Self::run_phase_host(ctx, phase, script, transcript)?,
+        };
+
+        if !success {
+            warn!(phase = %phase, "phase failed");
+        }
+
+        Ok(PhaseResult {
+            phase,
+            success,
+            duration: phase_start.elapsed(),
+            log_output,
+        })
+    }
+
+    /// Run a phase inside the membrane sandbox via systemd-nspawn.
+    fn run_phase_sandboxed(
+        ctx: &BuildContext,
+        phase: BuildPhase,
+        script: &str,
+        sandbox: &SandboxHandle,
+        transcript: &mut std::fs::File,
+    ) -> Result<(bool, String)> {
+        let output = sandbox
+            .run_phase(script)
+            .map_err(|e| CoreError::CommandFailed {
+                package: ctx.mrna.name.clone(),
+                phase: phase.to_string(),
+                message: format!("sandbox execution failed: {e}"),
+            })?;
+
+        // Append output to transcript
+        if !output.stdout.is_empty() {
+            transcript
+                .write_all(output.stdout.as_bytes())
+                .map_err(|e| CoreError::io(ctx.transcript_path(), e.to_string()))?;
+        }
+        if !output.stderr.is_empty() {
+            transcript
+                .write_all(output.stderr.as_bytes())
+                .map_err(|e| CoreError::io(ctx.transcript_path(), e.to_string()))?;
+        }
+
+        let log_output = format!("{}{}", output.stdout, output.stderr);
+        Ok((output.success, log_output))
+    }
+
+    /// Build a SandboxConfig with environment variables pointing to sandbox-internal paths.
+    ///
+    /// Inside the nspawn container, bind mounts map:
+    /// - `<base>/src` -> `/srv/src`
+    /// - `<base>/build` -> `/srv/build`
+    /// - `<base>/pkg` -> `/srv/pkg`
+    ///
+    /// So DESTDIR, SRCDIR, BUILDDIR must use `/srv/...` paths.
+    fn build_sandbox_env_config(ctx: &BuildContext) -> SandboxConfig {
+        let base_config = match &ctx.config.sandbox_config {
+            Some(c) => c.clone(),
+            None => SandboxConfig::new_for_build(ctx.base_dir.clone()),
+        };
+
+        // Override env vars with sandbox-internal paths
+        let mut config = base_config;
+        config.env_vars = vec![
+            ("DESTDIR".to_string(), "/srv/pkg".to_string()),
+            ("SRCDIR".to_string(), "/srv/src".to_string()),
+            ("BUILDDIR".to_string(), "/srv/build".to_string()),
+            ("NPROC".to_string(), ctx.config.jobs.to_string()),
+            ("ARCH".to_string(), ctx.config.arch.clone()),
+            ("PREFIX".to_string(), ctx.config.prefix.clone()),
+        ];
+        if !ctx.config.cflags.is_empty() {
+            config
+                .env_vars
+                .push(("CFLAGS".to_string(), ctx.config.cflags.clone()));
+        }
+        if !ctx.config.cxxflags.is_empty() {
+            config
+                .env_vars
+                .push(("CXXFLAGS".to_string(), ctx.config.cxxflags.clone()));
+        }
+        if !ctx.config.ldflags.is_empty() {
+            config
+                .env_vars
+                .push(("LDFLAGS".to_string(), ctx.config.ldflags.clone()));
+        }
+        config
+    }
+
+    /// Run a phase directly on the host via bash (no sandbox).
+    fn run_phase_host(
+        ctx: &BuildContext,
+        phase: BuildPhase,
+        script: &str,
+        transcript: &mut std::fs::File,
+    ) -> Result<(bool, String)> {
         let working_dir = match phase {
             BuildPhase::Prepare => ctx.src_dir(),
             _ => ctx.build_dir(),
@@ -236,20 +353,7 @@ impl BuildExecutor {
         let success = output.status.success();
         let log_output = format!("{stdout}{stderr}");
 
-        if !success {
-            warn!(
-                phase = %phase,
-                exit_code = ?output.status.code(),
-                "phase failed"
-            );
-        }
-
-        Ok(PhaseResult {
-            phase,
-            success,
-            duration: phase_start.elapsed(),
-            log_output,
-        })
+        Ok((success, log_output))
     }
 }
 

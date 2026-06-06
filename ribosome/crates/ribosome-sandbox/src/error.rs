@@ -7,6 +7,7 @@ pub enum SandboxError {
     ExecutionFailed(String),
 
     #[error("namespace setup failed: {0}")]
+    // Reserved for direct Linux namespace API (future iteration)
     NamespaceError(String),
 }
 

@@ -5,6 +5,7 @@ use anyhow::{bail, Context, Result};
 use clap::Parser;
 use ribosome_deps::DependencyGraph;
 use ribosome_parser::{collect_validation_issues, parse_mrna_file, Severity, ValidationIssue};
+use ribosome_sandbox::{SandboxConfig, SandboxHandle};
 use walkdir::WalkDir;
 
 #[derive(Parser)]
@@ -28,11 +29,23 @@ enum Commands {
         /// Number of parallel jobs (default: auto-detect)
         #[arg(long)]
         jobs: Option<usize>,
+        /// Run build phases inside a membrane sandbox (systemd-nspawn)
+        #[arg(long)]
+        sandbox: bool,
+        /// Isolate network access inside the sandbox (implies --sandbox)
+        #[arg(long)]
+        no_network: bool,
+        /// Memory limit for the sandbox (e.g., "8G", "512M")
+        #[arg(long)]
+        memory_limit: Option<String>,
     },
     /// Enter build sandbox for debugging
     Shell {
-        /// Package sandbox to enter
+        /// Package name or path to build directory
         package: String,
+        /// Build root directory (default: ./build)
+        #[arg(long, default_value = "./build")]
+        build_root: PathBuf,
     },
     /// Verify mRNA file(s) syntax and semantics
     Check {
@@ -104,11 +117,21 @@ fn run() -> Result<()> {
             package,
             build_root,
             jobs,
-        } => cmd_build(&package, &build_root, jobs),
-        Commands::Shell { package } => {
-            tracing::info!("Entering sandbox for: {package}");
-            bail!("shell not implemented in Sprint 1");
-        }
+            sandbox,
+            no_network,
+            memory_limit,
+        } => cmd_build(
+            &package,
+            &build_root,
+            jobs,
+            sandbox,
+            no_network,
+            memory_limit.as_deref(),
+        ),
+        Commands::Shell {
+            package,
+            build_root,
+        } => cmd_shell(&package, &build_root),
         Commands::Check { path } => cmd_check(&path),
         Commands::Graph { path, output } => cmd_graph(path.as_deref(), output.as_deref()),
         Commands::Clean => {
@@ -121,6 +144,52 @@ fn run() -> Result<()> {
         }
         Commands::Repo { action } => cmd_repo(action),
     }
+}
+
+fn cmd_shell(package: &str, build_root: &Path) -> Result<()> {
+    let build_base = if Path::new(package).exists() {
+        PathBuf::from(package)
+    } else {
+        build_root.join(package)
+    };
+
+    if !build_base.exists() {
+        bail!("build directory does not exist: {}", build_base.display());
+    }
+
+    let src_dir = build_base.join("src");
+    let build_dir = build_base.join("build");
+
+    if !src_dir.exists() || !build_dir.exists() {
+        bail!(
+            "build layout incomplete: need src/ and build/ under {}",
+            build_base.display()
+        );
+    }
+
+    println!("Entering sandbox at: {}", build_base.display());
+
+    // Build sandbox config using the library API
+    let config = SandboxConfig::new_for_build(build_base.clone())
+        .with_env("DESTDIR", "/srv/pkg")
+        .with_env("SRCDIR", "/srv/src")
+        .with_env("BUILDDIR", "/srv/build");
+
+    let handle = SandboxHandle::new(build_base, config);
+
+    let mut cmd = handle.build_interactive_command();
+    cmd.arg("--");
+
+    let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string());
+    cmd.arg(shell);
+
+    let status = cmd.status().context("failed to execute systemd-nspawn")?;
+
+    if !status.success() {
+        bail!("sandbox exited with code: {}", status.code().unwrap_or(-1));
+    }
+
+    Ok(())
 }
 
 fn cmd_check(path: &Path) -> Result<()> {
@@ -217,20 +286,47 @@ fn collect_mrna_paths(path: &Path) -> Result<Vec<PathBuf>> {
     Ok(files)
 }
 
-fn cmd_build(mrna_path: &Path, build_root: &Path, jobs: Option<usize>) -> Result<()> {
+fn cmd_build(
+    mrna_path: &Path,
+    build_root: &Path,
+    jobs: Option<usize>,
+    sandbox: bool,
+    no_network: bool,
+    memory_limit: Option<&str>,
+) -> Result<()> {
     let mrna = parse_mrna_file(mrna_path)
         .with_context(|| format!("failed to parse {}", mrna_path.display()))?;
 
     let label = format!("{}-{}", mrna.name, mrna.version);
     tracing::info!("building {label}");
 
-    // Sprint 1 safety warning: no sandbox
-    eprintln!("\x1b[33m[WARN] Sprint 1 executes build scripts directly on host (no membrane sandbox).\x1b[0m");
-    eprintln!("\x1b[33m        Only build trusted mRNA files on development machines.\x1b[0m\n");
+    let use_sandbox = sandbox || no_network;
+
+    if use_sandbox {
+        println!("[SANDBOX] Build will run inside membrane sandbox (systemd-nspawn)");
+        if no_network {
+            println!("[SANDBOX] Network isolation enabled");
+        }
+    } else {
+        eprintln!("\x1b[33m[WARN] Building without membrane sandbox — scripts execute directly on host.\x1b[0m");
+        eprintln!("\x1b[33m        Use --sandbox for isolated builds.\x1b[0m\n");
+    }
 
     let mut config = ribosome_core::BuildConfig::new(build_root);
     if let Some(j) = jobs {
         config.jobs = j;
+    }
+
+    if use_sandbox {
+        let base_dir = config.build_root.join(&label);
+        let mut sandbox_config = SandboxConfig::new_for_build(base_dir);
+        if no_network {
+            sandbox_config = sandbox_config.with_network_isolation(true);
+        }
+        if let Some(mem) = memory_limit {
+            sandbox_config = sandbox_config.with_memory_limit(mem);
+        }
+        config.sandbox_config = Some(sandbox_config);
     }
 
     let ctx = ribosome_core::BuildContext::new(mrna, config);

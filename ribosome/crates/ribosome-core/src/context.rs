@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use ribosome_parser::MrnaFile;
+use ribosome_sandbox::SandboxConfig;
 
 use crate::error::{CoreError, Result};
 
@@ -49,6 +50,8 @@ pub struct BuildConfig {
     pub cxxflags: String,
     /// Extra LDFLAGS.
     pub ldflags: String,
+    /// Sandbox configuration. When set, build phases run inside a membrane sandbox.
+    pub sandbox_config: Option<SandboxConfig>,
 }
 
 impl BuildConfig {
@@ -66,6 +69,7 @@ impl BuildConfig {
             cflags: String::new(),
             cxxflags: String::new(),
             ldflags: String::new(),
+            sandbox_config: None,
         }
     }
 }

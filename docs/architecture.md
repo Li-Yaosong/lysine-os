@@ -319,16 +319,18 @@ lysin provenance gcc              # 查看构建信息/溯源
 #### membrane -- 构建沙箱
 
 
-| 隔离机制              | 用途              |
-| ----------------- | --------------- |
-| Mount namespace   | 隔离文件系统，构建目录独立   |
-| PID namespace     | 隔离进程，防止构建进程干扰宿主 |
-| Network namespace | 可选网络隔离（离线构建时）   |
-| User namespace    | 无 root 权限构建     |
-| cgroup v2         | 限制 CPU/内存资源使用   |
-| seccomp           | 限制系统调用          |
-| Btrfs subvolume   | 构建目录作为独立子卷，快速清理 |
+| 隔离机制              | 用途              | 状态 |
+| ----------------- | --------------- | ---- |
+| Mount namespace   | 隔离文件系统，构建目录独立   | 已实现（Sprint 3） |
+| PID namespace     | 隔离进程，防止构建进程干扰宿主 | 已实现（Sprint 3） |
+| Network namespace | 可选网络隔离（离线构建时）   | 已实现（Sprint 3） |
+| User namespace    | 无 root 权限构建     | 后续迭代 |
+| cgroup v2         | 限制 CPU/内存资源使用   | 已实现（Sprint 3） |
+| seccomp           | 限制系统调用          | 后续迭代 |
+| Btrfs subvolume   | 构建目录作为独立子卷，快速清理 | 后续迭代 |
 
+
+**Sprint 3 实现说明**：membrane 沙箱基于 `systemd-nspawn` 实现。每个包的构建过程运行在独立的 nspawn 容器中，通过 bind mount 将 `src/`、`build/`、`pkg/` 目录映射到容器内的 `/srv/` 路径。沙箱通过 `--sandbox` / `--no-network` CLI 标志启用，默认不启用以保持向后兼容。详见 [ribosome-sandbox 设计文档](ribosome-book/sandbox-design.md)。
 
 #### genome -- 依赖图引擎
 

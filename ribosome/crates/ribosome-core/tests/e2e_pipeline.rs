@@ -23,7 +23,10 @@ fn create_test_mrna(dir: &Path, name: &str, version: &str, runtime_deps: &[&str]
             .iter()
             .map(|d| format!("    - {}\n", d))
             .collect();
-        format!("depends:\n  runtime:\n{}\n", dep_lines)
+        format!(
+            "depends:\n  build:\n{}  runtime:\n{}\n",
+            dep_lines, dep_lines
+        )
     };
 
     let content = format!(

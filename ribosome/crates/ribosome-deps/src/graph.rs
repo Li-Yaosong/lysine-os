@@ -10,6 +10,10 @@ use walkdir::WalkDir;
 use crate::error::{DepsError, Result};
 
 /// Genome DAG of package build dependencies.
+///
+/// Edge direction: `A → B` means "A depends on B" (A requires B to build).
+/// Therefore `topological_sort()` returns packages in "build-first" order:
+/// leaves (no outgoing edges, i.e. packages with no dependencies) come first.
 pub struct DependencyGraph {
     graph: DiGraph<String, ()>,
     index: HashMap<String, NodeIndex>,
@@ -32,6 +36,7 @@ impl DependencyGraph {
         idx
     }
 
+    /// Add a dependency edge: `from` depends on `to`.
     pub fn add_dependency(&mut self, from: &str, to: &str) -> Result<()> {
         let from_idx = self.add_package(from);
         let to_idx = self.add_package(to);
@@ -73,12 +78,29 @@ impl DependencyGraph {
         }
     }
 
-    pub fn topological_sort(&self) -> Vec<String> {
-        petgraph::algo::toposort(&self.graph, None)
-            .unwrap_or_default()
+    /// Return packages in topological order.
+    ///
+    /// For our graph convention (`A → B` means A depends on B), petgraph's
+    /// `toposort` returns nodes so that if there is an edge `u → v`, then `u`
+    /// comes before `v`. This means dependents come first, dependencies last.
+    ///
+    /// We **reverse** the result so that dependencies come first (build order).
+    ///
+    /// Returns `DepsError::CircularDependency` if the graph contains a cycle.
+    pub fn topological_sort(&self) -> Result<Vec<String>> {
+        let topo = petgraph::algo::toposort(&self.graph, None).map_err(|cycle| {
+            let cycle_node = &self.graph[cycle.node_id()];
+            DepsError::CircularDependency {
+                cycle: cycle_node.clone(),
+            }
+        })?;
+
+        // Reverse: dependencies first (leaves first), dependents last.
+        Ok(topo
             .into_iter()
+            .rev()
             .map(|idx| self.graph[idx].clone())
-            .collect()
+            .collect())
     }
 
     pub fn has_cycle(&self) -> bool {
@@ -89,7 +111,6 @@ impl DependencyGraph {
         if !self.has_cycle() {
             return Vec::new();
         }
-        // Return nodes that participate in any cycle (approximation: nodes with back-edges in DFS)
         let mut cyclic = Vec::new();
         for idx in self.graph.node_indices() {
             for neighbor in self.graph.neighbors_directed(idx, Direction::Outgoing) {
@@ -127,15 +148,16 @@ impl DependencyGraph {
     }
 
     /// Returns all packages needed to build `name` (including transitive deps),
-    /// in topological order (dependencies first).
+    /// in build order (dependencies first, `name` last).
     ///
-    /// Returns an error if `name` is not in the graph.
+    /// Returns an error if `name` is not in the graph or the graph has a cycle.
     pub fn build_order(&self, name: &str) -> Result<Vec<String>> {
         let start = self.index.get(name).ok_or_else(|| {
             DepsError::MissingDependency(format!("package '{name}' not found in graph"))
         })?;
 
-        // BFS to collect all reachable nodes from `name` following outgoing edges.
+        // BFS to collect all reachable nodes from `name` following outgoing edges
+        // (i.e. all transitive dependencies).
         let mut visited = std::collections::HashSet::new();
         let mut queue = std::collections::VecDeque::new();
         queue.push_back(*start);
@@ -149,11 +171,18 @@ impl DependencyGraph {
             }
         }
 
-        // Topological sort the full graph, then filter to only our visited set.
-        let topo = petgraph::algo::toposort(&self.graph, None).unwrap_or_default();
+        // Topological sort the full graph (returns Err on cycle), then filter.
+        let topo = petgraph::algo::toposort(&self.graph, None).map_err(|cycle| {
+            let cycle_node = &self.graph[cycle.node_id()];
+            DepsError::CircularDependency {
+                cycle: cycle_node.clone(),
+            }
+        })?;
 
+        // Reverse so dependencies come first, then filter to only visited nodes.
         let order: Vec<String> = topo
             .into_iter()
+            .rev()
             .filter(|idx| visited.contains(idx))
             .map(|idx| self.graph[idx].clone())
             .collect();
@@ -203,8 +232,6 @@ impl DependencyGraph {
     pub fn removable(&self, names: &[&str], installed: &[&str]) -> Vec<String> {
         let name_set: std::collections::HashSet<&str> = names.iter().copied().collect();
 
-        // For each candidate, check if any installed package (not in the removal set)
-        // depends on it.
         let mut safe = Vec::new();
         for &name in names {
             let reverse_deps = self.reverse_dependencies(name);
@@ -219,7 +246,9 @@ impl DependencyGraph {
     }
 
     /// Returns the transitive runtime dependency closure for the given packages,
-    /// resolved from the graph edges. Order is topological (deps first).
+    /// resolved from the graph edges. Order is build order (deps first).
+    ///
+    /// Silently ignores cycle errors (best-effort for install planning).
     pub fn resolve_install_order(&self, names: &[&str]) -> Vec<String> {
         let mut all_deps = std::collections::HashSet::new();
         for name in names {
@@ -228,13 +257,18 @@ impl DependencyGraph {
                     all_deps.insert(dep);
                 }
             } else {
-                // Package not in graph, include it anyway.
                 all_deps.insert(name.to_string());
             }
         }
 
-        // Sort topologically using the full graph order.
-        let topo = self.topological_sort();
+        // Sort topologically (best-effort; ignore cycle errors for this helper).
+        let topo = self.topological_sort().unwrap_or_else(|_| {
+            // Fallback: return packages in arbitrary order.
+            self.graph
+                .node_indices()
+                .map(|idx| self.graph[idx].clone())
+                .collect::<Vec<_>>()
+        });
         let mut result: Vec<String> = topo
             .into_iter()
             .filter(|name| all_deps.contains(name))
@@ -284,6 +318,25 @@ mod tests {
     }
 
     #[test]
+    fn test_topological_sort_dependencies_first() {
+        let graph = build_sample_graph();
+        let order = graph.topological_sort().unwrap();
+
+        // Dependencies must come before dependents.
+        let d_pos = order.iter().position(|n| n == "d").unwrap();
+        let b_pos = order.iter().position(|n| n == "b").unwrap();
+        let c_pos = order.iter().position(|n| n == "c").unwrap();
+        let a_pos = order.iter().position(|n| n == "a").unwrap();
+        let e_pos = order.iter().position(|n| n == "e").unwrap();
+
+        assert!(d_pos < b_pos, "d (dependency) should come before b");
+        assert!(d_pos < c_pos, "d (dependency) should come before c");
+        assert!(b_pos < a_pos, "b (dependency) should come before a");
+        assert!(c_pos < a_pos, "c (dependency) should come before a");
+        assert!(e_pos < b_pos, "e (dependency) should come before b");
+    }
+
+    #[test]
     fn test_build_order_returns_all_deps() {
         let graph = build_sample_graph();
         let order = graph.build_order("a").unwrap();
@@ -294,15 +347,11 @@ mod tests {
         assert!(order.contains(&"d".to_string()));
         assert!(order.contains(&"e".to_string()));
         assert_eq!(order.len(), 5);
-    }
 
-    #[test]
-    fn test_build_order_dependency_appears() {
-        let graph = build_sample_graph();
-        let order = graph.build_order("a").unwrap();
-        // All 5 packages should be in the result
-        let names: Vec<&str> = order.iter().map(|s| s.as_str()).collect();
-        assert!(names.contains(&"d"));
+        // Dependencies should come first.
+        let d_pos = order.iter().position(|n| n == "d").unwrap();
+        let a_pos = order.iter().position(|n| n == "a").unwrap();
+        assert!(d_pos < a_pos, "d should be built before a");
     }
 
     #[test]
@@ -332,7 +381,6 @@ mod tests {
     #[test]
     fn test_reverse_dependencies() {
         let graph = build_sample_graph();
-        // d is directly depended on by b and c. a indirectly depends on d via b and c.
         let rdeps = graph.reverse_dependencies("d");
         assert!(rdeps.contains(&"b".to_string()));
         assert!(rdeps.contains(&"c".to_string()));
@@ -349,29 +397,20 @@ mod tests {
     #[test]
     fn test_removable_all_safe() {
         let graph = build_sample_graph();
-        // Removing e: b depends on e but b is also in the removal set.
-        // But a still depends on b which is being removed — so a would be broken.
-        // Only e is safe to remove if only e is the candidate.
         let safe = graph.removable(&["e"], &["a", "b", "c", "d", "e"]);
-        // b depends on e and b is NOT in the removal set → e is NOT safe.
         assert!(safe.is_empty());
     }
 
     #[test]
     fn test_removable_leaf_is_safe() {
         let graph = build_sample_graph();
-        // b is not installed, so nobody depends on e among installed packages.
         let safe = graph.removable(&["e"], &["a", "c", "d", "e"]);
-        // a has reverse dep on e (via b), but b is not installed.
-        // Actually, reverse_deps("e") returns [a, b] since both depend on e.
-        // a is installed and not in removal set → e is blocked by a.
         assert!(safe.is_empty());
     }
 
     #[test]
     fn test_removable_truly_safe() {
         let graph = build_sample_graph();
-        // Only e installed, no one else depends on it among installed
         let safe = graph.removable(&["e"], &["e"]);
         assert_eq!(safe, vec!["e"]);
     }
@@ -379,7 +418,6 @@ mod tests {
     #[test]
     fn test_removable_blocked() {
         let graph = build_sample_graph();
-        // Removing d is NOT safe — b and c still need it
         let safe = graph.removable(&["d"], &["a", "b", "c", "d", "e"]);
         assert!(safe.is_empty());
     }
@@ -401,5 +439,14 @@ mod tests {
         assert!(graph.contains("a"));
         assert!(graph.contains("d"));
         assert!(!graph.contains("z"));
+    }
+
+    #[test]
+    fn test_topological_sort_rejects_cycle() {
+        let mut g = DependencyGraph::new();
+        g.add_dependency("a", "b").unwrap();
+        g.add_dependency("b", "a").unwrap(); // cycle!
+        assert!(g.has_cycle());
+        assert!(g.topological_sort().is_err());
     }
 }

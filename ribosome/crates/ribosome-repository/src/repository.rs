@@ -1,9 +1,9 @@
 use std::path::{Path, PathBuf};
 
-use tracing::info;
+use tracing::{info, warn};
 
 use crate::error::{RepositoryError, Result};
-use crate::index::{IndexEntry, RepositoryIndex};
+use crate::index::{IndexDepends, IndexEntry, RepositoryIndex};
 
 /// Represents an opened or created nucleus repository on disk.
 pub struct Repository {
@@ -137,18 +137,35 @@ impl Repository {
             })?
             .len();
 
-        // Build index entry using parsed filename components.
+        // Build index entry using parsed filename components + META metadata.
+        let prot_meta = match ribosome_package::read_meta(&dest_path) {
+            Ok(m) => m,
+            Err(e) => {
+                warn!(
+                    path = %dest_path.display(),
+                    error = %e,
+                    "failed to read META from .prot, using empty defaults"
+                );
+                ribosome_package::ProtMeta::default()
+            }
+        };
+
+        let (description, license) = extract_mrna_fields(&prot_meta.mrna_yaml);
+
         let entry = IndexEntry {
             name: parsed.name,
             version: parsed.version,
             release: parsed.release,
-            description: String::new(),
-            license: String::new(),
+            description,
+            license,
             arch: parsed.arch,
             category: category.to_string(),
             filename: format!("{category}/{filename}"),
             sha256,
-            depends: Default::default(),
+            depends: IndexDepends {
+                runtime: prot_meta.depends_runtime,
+                build: prot_meta.depends_build,
+            },
             provides: vec![],
             conflicts: vec![],
             installed_size,
@@ -199,17 +216,35 @@ impl Repository {
                 let stem = &filename[..filename.len() - 5];
                 let parsed = parse_prot_filename(stem);
 
+                // Read META for dependency info and description.
+                let prot_meta = match ribosome_package::read_meta(&path) {
+                    Ok(m) => m,
+                    Err(e) => {
+                        warn!(
+                            path = %path.display(),
+                            error = %e,
+                            "failed to read META during rebuild, using empty defaults"
+                        );
+                        ribosome_package::ProtMeta::default()
+                    }
+                };
+
+                let (description, license) = extract_mrna_fields(&prot_meta.mrna_yaml);
+
                 let index_entry = IndexEntry {
                     name: parsed.name,
                     version: parsed.version,
                     release: parsed.release,
-                    description: String::new(),
-                    license: String::new(),
+                    description,
+                    license,
                     arch: parsed.arch,
                     category: cat.to_string(),
                     filename: format!("{cat}/{filename}"),
                     sha256,
-                    depends: Default::default(),
+                    depends: IndexDepends {
+                        runtime: prot_meta.depends_runtime,
+                        build: prot_meta.depends_build,
+                    },
                     provides: vec![],
                     conflicts: vec![],
                     installed_size,
@@ -314,6 +349,19 @@ fn extract_version(name_ver: &str) -> String {
         name_ver[last_split + 1..].to_string()
     } else {
         String::new()
+    }
+}
+
+/// Extract `description` and `license` fields from raw mRNA YAML content.
+/// Returns empty strings if parsing fails or fields are missing.
+fn extract_mrna_fields(mrna_yaml: &Option<String>) -> (String, String) {
+    let Some(yaml) = mrna_yaml else {
+        return (String::new(), String::new());
+    };
+
+    match ribosome_parser::parse_mrna(yaml) {
+        Ok(mrna) => (mrna.description, mrna.license),
+        Err(_) => (String::new(), String::new()),
     }
 }
 

@@ -109,13 +109,18 @@ impl RepositoryIndex {
     }
 
     /// Add or replace an entry. If an entry with the same name exists,
-    /// the one with the higher version+release wins.
+    /// the one with the higher version (semver) + release wins.
     pub fn add_entry(&mut self, entry: IndexEntry) {
         let should_insert = match self.entries.get(&entry.name) {
             Some(existing) => {
-                // Simple heuristic: prefer the newer entry.
-                // A proper version comparison would use ribosome-parser's Version.
-                entry.version >= existing.version
+                let new_ver = ribosome_parser::Version::parse(&entry.version);
+                let old_ver = ribosome_parser::Version::parse(&existing.version);
+                match (new_ver, old_ver) {
+                    (Ok(n), Ok(o)) if n > o => true,
+                    (Ok(n), Ok(o)) if n == o => entry.release >= existing.release,
+                    // Fallback to lexicographic for non-standard versions.
+                    _ => entry.version >= existing.version,
+                }
             }
             None => true,
         };

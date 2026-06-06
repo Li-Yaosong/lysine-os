@@ -43,11 +43,25 @@ impl LocalDb {
         let content = std::fs::read_to_string(&self.path)
             .with_context(|| format!("reading {}", self.path.display()))?;
 
-        self.packages = content
-            .lines()
-            .filter(|l| !l.trim().is_empty())
-            .filter_map(|line| serde_json::from_str::<InstalledPackage>(line).ok())
-            .collect();
+        let mut packages = Vec::new();
+        for (line_num, line) in content.lines().enumerate() {
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            match serde_json::from_str::<InstalledPackage>(trimmed) {
+                Ok(pkg) => packages.push(pkg),
+                Err(e) => {
+                    tracing::warn!(
+                        path = %self.path.display(),
+                        line = line_num + 1,
+                        error = %e,
+                        "skipping malformed database entry"
+                    );
+                }
+            }
+        }
+        self.packages = packages;
 
         Ok(())
     }

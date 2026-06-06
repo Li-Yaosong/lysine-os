@@ -3,6 +3,7 @@ use ribosome_package::unpack;
 use ribosome_repository::Repository;
 use tracing::{info, warn};
 
+use super::hash_file;
 use crate::config::LysinConfig;
 use crate::db::{InstalledPackage, LocalDb};
 
@@ -20,7 +21,7 @@ pub async fn install(name: &str, config: &LysinConfig) -> Result<()> {
     }
 
     // Find the package in the configured repositories.
-    let (entry, repo) = find_package_in_repos(name, config)?;
+    let (entry, _repo) = find_package_in_repos(name, config)?;
 
     info!(package = name, version = %entry.version, "installing");
     println!("Installing {}-{}...", entry.name, entry.version);
@@ -31,29 +32,21 @@ pub async fn install(name: &str, config: &LysinConfig) -> Result<()> {
         if !db.is_installed(dep_name) {
             info!(dependency = dep_name, "installing dependency");
             println!("  Installing dependency: {}", dep_name);
-            install_single(dep_name, config, &mut db, &repo).await?;
+            install_single(dep_name, config, &mut db).await?;
         }
     }
 
     // Install the package itself.
-    install_single(name, config, &mut db, &repo).await?;
+    install_single(name, config, &mut db).await?;
 
     println!("Done.");
     Ok(())
 }
 
 /// Install a single package (no dependency resolution).
-async fn install_single(
-    name: &str,
-    config: &LysinConfig,
-    db: &mut LocalDb,
-    repo: &Repository,
-) -> Result<()> {
-    let entry = repo
-        .load_index()?
-        .find(name)
-        .cloned()
-        .context(format!("package '{name}' not found in repository index"))?;
+/// Searches across all configured repositories to find the package.
+async fn install_single(name: &str, config: &LysinConfig, db: &mut LocalDb) -> Result<()> {
+    let (entry, repo) = find_package_in_repos(name, config)?;
 
     let prot_path = repo.root.join(&entry.filename);
     if !prot_path.exists() {
@@ -120,14 +113,4 @@ fn find_package_in_repos(
         }
     }
     bail!("package '{}' not found in any configured repository", name)
-}
-
-fn hash_file(path: &std::path::Path) -> Result<String> {
-    use sha2::{Digest, Sha256};
-    let mut hasher = Sha256::new();
-    let mut file =
-        std::fs::File::open(path).with_context(|| format!("opening {}", path.display()))?;
-    std::io::copy(&mut file, &mut hasher)?;
-    let result = hasher.finalize();
-    Ok(format!("sha256:{result:x}"))
 }

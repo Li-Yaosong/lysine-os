@@ -11,6 +11,7 @@ authors.workspace = true
 [dependencies]
 ribosome-core = { path = "../ribosome-core" }
 ribosome-package = { path = "../ribosome-package" }
+ribosome-parser = { path = "../ribosome-parser" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }

@@ -291,6 +291,64 @@ fn hash_file_contents(path: &Path) -> Result<String> {
     Ok(format!("{result:x}"))
 }
 
+/// Metadata extracted from a `.prot` package's `META/` directory.
+#[derive(Debug, Default)]
+pub struct ProtMeta {
+    /// Runtime dependencies parsed from `META/depends.txt`.
+    pub depends_runtime: Vec<String>,
+    /// Build dependencies parsed from `META/depends.txt`.
+    pub depends_build: Vec<String>,
+    /// Raw mRNA YAML content from `META/mRNA.yml`.
+    pub mrna_yaml: Option<String>,
+}
+
+/// Read metadata from a `.prot` package without extracting files.
+///
+/// Scans the archive for `META/depends.txt` and `META/mRNA.yml` entries,
+/// reading them into memory. Does not extract any `FILES/` content.
+pub fn read_meta(prot_path: &Path) -> Result<ProtMeta> {
+    let file = std::fs::File::open(prot_path)?;
+    let decoder = zstd::Decoder::new(file)?;
+    let mut archive = tar::Archive::new(decoder);
+
+    let mut meta = ProtMeta::default();
+
+    for entry in archive.entries()? {
+        let mut entry = entry?;
+        let path = entry.path()?.to_path_buf();
+
+        if path == Path::new("META/depends.txt") {
+            let mut content = String::new();
+            use std::io::Read;
+            entry.read_to_string(&mut content)?;
+            for line in content.lines() {
+                let line = line.trim();
+                if line.is_empty() {
+                    continue;
+                }
+                if let Some(dep) = line.strip_prefix("runtime:") {
+                    let dep = dep.trim().to_string();
+                    if !dep.is_empty() {
+                        meta.depends_runtime.push(dep);
+                    }
+                } else if let Some(dep) = line.strip_prefix("build:") {
+                    let dep = dep.trim().to_string();
+                    if !dep.is_empty() {
+                        meta.depends_build.push(dep);
+                    }
+                }
+            }
+        } else if path == Path::new("META/mRNA.yml") {
+            let mut content = String::new();
+            use std::io::Read;
+            entry.read_to_string(&mut content)?;
+            meta.mrna_yaml = Some(content);
+        }
+    }
+
+    Ok(meta)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

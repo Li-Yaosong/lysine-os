@@ -3,6 +3,7 @@ use ribosome_package::unpack;
 use ribosome_repository::Repository;
 use tracing::{info, warn};
 
+use super::hash_file;
 use crate::config::LysinConfig;
 use crate::db::{InstalledPackage, LocalDb};
 
@@ -29,7 +30,7 @@ pub async fn update(config: &LysinConfig) -> Result<()> {
     )> = Vec::new();
 
     for pkg in installed {
-        match find_newer_version(&pkg.name, &pkg.version, config) {
+        match find_newer_version(&pkg.name, &pkg.version, pkg.release, config) {
             Ok(Some((entry, repo))) => {
                 println!(
                     "  {} {} -> {} (release {} -> {})",
@@ -86,9 +87,14 @@ pub async fn update(config: &LysinConfig) -> Result<()> {
 
 /// Find a newer version of a package in configured repositories.
 /// Returns the index entry and repository if a newer version exists.
+///
+/// Uses semantic version comparison (major.minor.patch), falling back to
+/// lexicographic comparison for non-standard version strings. For equal
+/// versions, a higher release number is considered an update.
 fn find_newer_version(
     name: &str,
     current_version: &str,
+    current_release: u32,
     config: &LysinConfig,
 ) -> Result<Option<(ribosome_repository::IndexEntry, Repository)>> {
     for repo_path in &config.repositories {
@@ -100,16 +106,23 @@ fn find_newer_version(
         let index = repo.load_index()?;
 
         if let Some(entry) = index.find(name) {
-            // Compare versions: prefer higher version string (lexicographic),
-            // then higher release number.
-            if entry.version.as_str() > current_version {
+            // Semantic version comparison.
+            let new_ver = ribosome_parser::Version::parse(&entry.version);
+            let cur_ver = ribosome_parser::Version::parse(current_version);
+
+            let version_is_newer = match (new_ver, cur_ver) {
+                (Ok(n), Ok(c)) => n > c,
+                // Fallback to lexicographic if either side fails to parse.
+                _ => entry.version.as_str() > current_version,
+            };
+
+            if version_is_newer {
                 return Ok(Some((entry.clone(), repo)));
             }
-            if entry.version == current_version && entry.release > 0 {
-                // Same version but different release (rebuild).
-                // The index always holds the latest, so if the release differs,
-                // it's an update. We check the installed DB for the actual release.
-                // For now, this branch is a placeholder for release-based updates.
+
+            // Same version but higher release = rebuild update.
+            if entry.version == current_version && entry.release > current_release {
+                return Ok(Some((entry.clone(), repo)));
             }
         }
     }
@@ -179,14 +192,4 @@ async fn update_single(
 
     info!(package = %old_pkg.name, "updated successfully");
     Ok(())
-}
-
-fn hash_file(path: &std::path::Path) -> Result<String> {
-    use sha2::{Digest, Sha256};
-    let mut hasher = Sha256::new();
-    let mut file =
-        std::fs::File::open(path).with_context(|| format!("opening {}", path.display()))?;
-    std::io::copy(&mut file, &mut hasher)?;
-    let result = hasher.finalize();
-    Ok(format!("sha256:{result:x}"))
 }

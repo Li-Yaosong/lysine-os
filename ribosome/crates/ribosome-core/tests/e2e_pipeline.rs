@@ -116,11 +116,13 @@ fn e2e_parse_depgraph_pack_repo_unpack() {
 
     // --- Phase 3: Build dependency graph ---
     let mut graph = DependencyGraph::new();
-    graph.load_mrna_directory(&mrna_dir).expect("loading mrna dir");
+    graph
+        .load_mrna_directory(&mrna_dir)
+        .expect("loading mrna dir");
 
     assert!(!graph.has_cycle());
-    let mut order = graph.topological_sort();
-    order.reverse(); // Reverse to get dependency-first order
+    let order = graph.topological_sort().expect("topological sort");
+    // topological_sort now returns dependencies-first order (reversed internally).
     assert_eq!(order.len(), 3);
 
     // Verify order: liba (no deps) -> libb (depends liba) -> app (depends both)
@@ -143,7 +145,12 @@ fn e2e_parse_depgraph_pack_repo_unpack() {
     for (name, version, _mrna, deps) in [
         ("liba", "1.0.0", &liba_mrna, vec![]),
         ("libb", "2.0.0", &libb_mrna, vec!["liba".to_string()]),
-        ("app", "3.0.0", &app_mrna, vec!["liba".to_string(), "libb".to_string()]),
+        (
+            "app",
+            "3.0.0",
+            &app_mrna,
+            vec!["liba".to_string(), "libb".to_string()],
+        ),
     ] {
         let destdir = build_dir.join(format!("{}_pkg", name));
         create_fake_destdir(&destdir, name, version);
@@ -174,8 +181,19 @@ fn e2e_parse_depgraph_pack_repo_unpack() {
 
     let app_entry = index.find("app").expect("app in index");
     assert_eq!(app_entry.version, "3.0.0");
-    // Note: depends.runtime is not populated by publish() currently.
-    // It would need to be extracted from the .prot package's META/depends.txt.
+    // After C6 fix, depends.runtime is now populated from .prot package's META/depends.txt.
+    assert!(
+        !app_entry.depends.runtime.is_empty(),
+        "app should have runtime deps"
+    );
+    assert!(
+        app_entry.depends.runtime.contains(&"liba".to_string())
+            || app_entry
+                .depends
+                .runtime
+                .iter()
+                .any(|d| d.starts_with("liba"))
+    );
 
     // --- Phase 7: Install (unpack) packages ---
     let install_root = root.join("install");
@@ -183,11 +201,18 @@ fn e2e_parse_depgraph_pack_repo_unpack() {
 
     // Install in correct order (liba -> libb -> app)
     for name in ["liba", "libb", "app"] {
-        let entry = index.find(name).expect(&format!("{name} in index"));
+        let entry = index
+            .find(name)
+            .unwrap_or_else(|| panic!("{name} in index"));
         let prot_path = repo_dir.join(&entry.filename);
-        assert!(prot_path.exists(), "prot file should exist: {:?}", prot_path);
+        assert!(
+            prot_path.exists(),
+            "prot file should exist: {:?}",
+            prot_path
+        );
 
-        let extracted = unpack(&prot_path, &install_root).expect(&format!("unpack {name}"));
+        let extracted =
+            unpack(&prot_path, &install_root).unwrap_or_else(|_| panic!("unpack {name}"));
         assert!(!extracted.is_empty(), "{name} should have files");
 
         // Verify binary exists

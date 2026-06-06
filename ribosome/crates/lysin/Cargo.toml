@@ -15,6 +15,7 @@ path = "src/main.rs"
 [dependencies]
 ribosome-core = { path = "../ribosome-core" }
 ribosome-package = { path = "../ribosome-package" }
+ribosome-parser = { path = "../ribosome-parser" }
 ribosome-repository = { path = "../ribosome-repository" }
 ribosome-snapshot = { path = "../ribosome-snapshot" }
 ribosome-deps = { path = "../ribosome-deps" }

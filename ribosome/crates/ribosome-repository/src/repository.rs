@@ -366,18 +366,10 @@ fn extract_mrna_fields(mrna_yaml: &Option<String>) -> (String, String) {
 }
 
 fn hash_file(path: &Path) -> Result<String> {
-    use sha2::{Digest, Sha256};
-    let mut hasher = Sha256::new();
-    let mut file = std::fs::File::open(path).map_err(|e| RepositoryError::Io {
+    ribosome_store::hash_file(path).map_err(|e| RepositoryError::Io {
         path: path.to_path_buf(),
         reason: e.to_string(),
-    })?;
-    std::io::copy(&mut file, &mut hasher).map_err(|e| RepositoryError::Io {
-        path: path.to_path_buf(),
-        reason: e.to_string(),
-    })?;
-    let result = hasher.finalize();
-    Ok(format!("sha256:{result:x}"))
+    })
 }
 
 #[cfg(test)]

@@ -48,13 +48,8 @@ pub async fn install(name: &str, config: &LysinConfig) -> Result<()> {
 async fn install_single(name: &str, config: &LysinConfig, db: &mut LocalDb) -> Result<()> {
     let (entry, repo) = find_package_in_repos(name, config)?;
 
-    let prot_path = repo.root.join(&entry.filename);
-    if !prot_path.exists() {
-        bail!(
-            "package file not found: {} — run 'ribosome repo reindex' to rebuild the index",
-            prot_path.display()
-        );
-    }
+    // Try to resolve the .prot file from the vacuole CAS cache first.
+    let prot_path = resolve_prot_path(&entry, &repo, config)?;
 
     // Verify hash.
     let actual_hash = hash_file(&prot_path)?;
@@ -113,4 +108,51 @@ fn find_package_in_repos(
         }
     }
     bail!("package '{}' not found in any configured repository", name)
+}
+
+/// Resolve the .prot file path, preferring the vacuole CAS cache when available.
+///
+/// If the package is already stored in the local CAS, returns the cached path.
+/// Otherwise falls back to the repository's local file.
+fn resolve_prot_path(
+    entry: &ribosome_repository::IndexEntry,
+    repo: &Repository,
+    config: &LysinConfig,
+) -> Result<std::path::PathBuf> {
+    let vacuole_path = config.cache_path.join("vacuole");
+    if vacuole_path.exists() {
+        match ribosome_store::VacuoleStore::open(&vacuole_path) {
+            Ok(store) => {
+                let ref_name = format!(
+                    "{}-{}-{}-{}",
+                    entry.name, entry.version, entry.release, entry.arch
+                );
+                if let Ok(Some(digest)) =
+                    store.resolve_ref(ribosome_store::refs::NS_PACKAGES, &ref_name)
+                {
+                    if let Ok(Some(handle)) = store.get(&digest) {
+                        info!(package = %entry.name, "resolved from vacuole CAS cache");
+                        return Ok(handle.path().to_path_buf());
+                    }
+                }
+            }
+            Err(e) => {
+                warn!(
+                    error = %e,
+                    path = %vacuole_path.display(),
+                    "failed to open vacuole store, falling back to repository"
+                );
+            }
+        }
+    }
+
+    // Fallback: use the repository's local .prot file
+    let prot_path = repo.root.join(&entry.filename);
+    if !prot_path.exists() {
+        bail!(
+            "package file not found: {} — run 'ribosome repo reindex' to rebuild the index",
+            prot_path.display()
+        );
+    }
+    Ok(prot_path)
 }

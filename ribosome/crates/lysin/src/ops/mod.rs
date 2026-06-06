@@ -8,7 +8,7 @@ pub mod update;
 
 use std::path::Path;
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use ribosome_parser::Version;
 
 /// Compare two version strings using semantic versioning.
@@ -30,12 +30,9 @@ pub fn version_is_newer_or_equal(newer: &str, current: &str) -> bool {
 }
 
 /// Compute SHA-256 of a file, returning "sha256:<hex>".
+///
+/// Delegates to `ribosome_store::hash_file` for project-wide consistency.
 pub fn hash_file(path: &Path) -> Result<String> {
-    use sha2::{Digest, Sha256};
-    let mut hasher = Sha256::new();
-    let mut file =
-        std::fs::File::open(path).with_context(|| format!("opening {}", path.display()))?;
-    std::io::copy(&mut file, &mut hasher)?;
-    let result = hasher.finalize();
-    Ok(format!("sha256:{result:x}"))
+    ribosome_store::hash_file(path)
+        .map_err(|e| anyhow::anyhow!("failed to hash {}: {e}", path.display()))
 }

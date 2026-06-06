@@ -4,6 +4,8 @@ use sha2::{Digest, Sha256};
 use tracing::info;
 use walkdir::WalkDir;
 
+use ribosome_store::hash_file as store_hash_file;
+
 use crate::error::{PackageError, Result};
 
 /// Metadata for a .prot package being created.
@@ -180,12 +182,12 @@ pub fn unpack(prot_path: &Path, target_dir: &Path) -> Result<Vec<PathBuf>> {
 }
 
 /// Compute SHA-256 of a file.
+///
+/// Delegates to `ribosome_store::hash_file` for consistency across the project.
 pub fn hash_file(path: &Path) -> Result<String> {
-    let mut hasher = Sha256::new();
-    let mut file = std::fs::File::open(path)?;
-    std::io::copy(&mut file, &mut hasher)?;
-    let result = hasher.finalize();
-    Ok(format!("sha256:{result:x}"))
+    store_hash_file(path).map_err(|e| {
+        PackageError::CreationFailed(format!("failed to hash file {}: {e}", path.display()))
+    })
 }
 
 // --- Internal helpers ---

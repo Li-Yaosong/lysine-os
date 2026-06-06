@@ -1,0 +1,17 @@
+[package]
+name = "ribosome-store"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Content-addressable storage (vacuole) for the Ribosome build system"
+
+[dependencies]
+sha2.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

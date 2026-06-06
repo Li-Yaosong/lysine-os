@@ -122,9 +122,15 @@ impl BuildExecutor {
             "build phases completed successfully"
         );
 
-        // Auto-pack into .prot
+        // Auto-pack into .prot, then store in CAS
         let (protein, pack_error) = match Self::pack_result(ctx, &total) {
-            Ok(p) => (Some(p), None),
+            Ok(p) => {
+                // Store the .prot package in the vacuole CAS
+                if let Err(e) = Self::store_in_cas(ctx, &p) {
+                    warn!(error = %e, "CAS storage failed — .prot was created but not cached");
+                }
+                (Some(p), None)
+            }
             Err(e) => {
                 let msg = format!("{e}");
                 warn!(error = %msg, "packing failed — build phases succeeded but .prot was not created");
@@ -195,6 +201,45 @@ impl BuildExecutor {
             file_count: pack_result.file_count,
             size_bytes: pack_result.size_bytes,
         })
+    }
+
+    /// Store the produced .prot package in the vacuole CAS and add a ref.
+    fn store_in_cas(ctx: &BuildContext, protein: &super::ProteinOutput) -> crate::Result<()> {
+        use ribosome_store::VacuoleStore;
+
+        let vacuole_path = ctx.config.cache_dir.join("vacuole");
+        let store = VacuoleStore::open(&vacuole_path).map_err(|e| CoreError::BuildFailed {
+            package: ctx.mrna.name.clone(),
+            reason: format!("failed to open vacuole store: {e}"),
+        })?;
+
+        let digest = store
+            .put_file(&protein.path)
+            .map_err(|e| CoreError::BuildFailed {
+                package: ctx.mrna.name.clone(),
+                reason: format!("failed to store .prot in CAS: {e}"),
+            })?;
+
+        store
+            .add_package_ref(
+                &ctx.mrna.name,
+                &ctx.mrna.version,
+                ctx.mrna.release,
+                &ctx.config.arch,
+                &digest,
+            )
+            .map_err(|e| CoreError::BuildFailed {
+                package: ctx.mrna.name.clone(),
+                reason: format!("failed to add package ref: {e}"),
+            })?;
+
+        info!(
+            package = %ctx.mrna.name,
+            hash = %digest,
+            "stored .prot in vacuole CAS"
+        );
+
+        Ok(())
     }
 
     /// Execute a single build phase.

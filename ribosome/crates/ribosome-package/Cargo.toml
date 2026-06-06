@@ -10,6 +10,7 @@ authors.workspace = true
 
 [dependencies]
 ribosome-parser = { path = "../ribosome-parser" }
+ribosome-store = { path = "../ribosome-store" }
 serde = { workspace = true }
 serde_yaml = { workspace = true }
 sha2 = { workspace = true }

@@ -44,9 +44,15 @@ impl SandboxHandle {
     /// Prepare the sandbox directory layout.
     ///
     /// Creates `src/`, `build/`, `pkg/` directories under `build_base`
-    /// if they don't already exist.
+    /// if they don't already exist. When the parent directory is on a Btrfs
+    /// filesystem, `build_base` is created as a subvolume for fast cleanup.
     pub fn create(&self) -> Result<()> {
         info!(base = %self.build_base.display(), "preparing sandbox directories");
+
+        // Create build_base directory, preferring Btrfs subvolume when available
+        if !self.build_base.exists() {
+            crate::btrfs::create_build_dir(&self.build_base)?;
+        }
 
         // Ensure all bind mount source directories exist.
         // For the default config this creates src/, build/, pkg/ under build_base.
@@ -110,16 +116,13 @@ impl SandboxHandle {
 
     /// Clean up sandbox resources.
     ///
-    /// Removes the temporary rootfs copy (if any), but preserves
-    /// build artifacts in `src/`, `build/`, `pkg/`.
+    /// Removes the build directory tree. When on Btrfs, uses subvolume
+    /// deletion for instantaneous cleanup. Otherwise falls back to `rm -rf`.
+    /// Build artifacts in `src/`, `build/`, `pkg/` are removed along with
+    /// the base directory.
     pub fn destroy(&self) -> Result<()> {
         info!(base = %self.build_base.display(), "cleaning up sandbox");
-        debug!(
-            rootfs = %self.config.rootfs.display(),
-            "no custom rootfs to clean up (host rootfs is shared)"
-        );
-        // TODO: When custom rootfs is supported, clean up the temporary rootfs copy here.
-        // The build directories (src/build/pkg) are preserved for debugging and packaging.
+        crate::btrfs::remove_build_dir(&self.build_base)?;
         Ok(())
     }
 
@@ -141,10 +144,7 @@ impl SandboxHandle {
             cmd.arg(mount.to_nspawn_arg());
         }
 
-        // Network isolation
-        if self.config.network_isolation {
-            cmd.arg("--private-network");
-        }
+        self.add_isolation_args(&mut cmd);
 
         // cgroup resource limits
         if let Some(ref mem) = self.config.memory_limit {
@@ -180,12 +180,46 @@ impl SandboxHandle {
             cmd.arg(mount.to_nspawn_arg());
         }
 
+        self.add_isolation_args(&mut cmd);
+
         // Environment variables
         for (key, value) in &self.config.env_vars {
             cmd.arg(format!("--setenv={key}={value}"));
         }
 
         cmd
+    }
+
+    /// Append isolation-related arguments common to both build and interactive commands.
+    fn add_isolation_args(&self, cmd: &mut Command) {
+        // Network isolation
+        if self.config.network_isolation {
+            cmd.arg("--private-network");
+        }
+
+        // User namespace for unprivileged builds
+        if self.config.user_namespace {
+            cmd.arg("--private-users");
+            if let Some(ref uid_map) = self.config.uid_map {
+                cmd.arg(format!("--private-users-uid={uid_map}"));
+            }
+            if let Some(ref gid_map) = self.config.gid_map {
+                cmd.arg(format!("--private-users-gid={gid_map}"));
+            }
+        }
+
+        // Drop capabilities
+        if !self.config.drop_capabilities.is_empty() {
+            cmd.arg(format!(
+                "--drop-capability={}",
+                self.config.drop_capabilities.join(",")
+            ));
+        }
+
+        // System call filter
+        for filter in &self.config.syscall_filter {
+            cmd.arg(format!("--system-call-filter={filter}"));
+        }
     }
 }
 
@@ -207,6 +241,9 @@ mod tests {
         assert!(config.cpu_quota.is_none());
         assert_eq!(config.bind_mounts.len(), 3);
         assert_eq!(config.working_dir, PathBuf::from("/srv/build"));
+        assert!(!config.user_namespace);
+        assert!(config.uid_map.is_none());
+        assert!(config.gid_map.is_none());
     }
 
     #[test]
@@ -254,6 +291,9 @@ mod tests {
 
         // Should NOT have network isolation by default
         assert!(!args_joined.contains("--private-network"));
+
+        // Should NOT have user namespace by default
+        assert!(!args_joined.contains("--private-users"));
     }
 
     #[test]
@@ -302,6 +342,160 @@ mod tests {
 
         assert!(args_joined.contains("--setenv=DESTDIR=/srv/pkg"));
         assert!(args_joined.contains("--setenv=SRCDIR=/srv/src"));
+    }
+
+    #[test]
+    fn test_nspawn_user_namespace_default_off() {
+        let config = test_config();
+        let handle = SandboxHandle::new(PathBuf::from("/tmp/test-build"), config);
+        let cmd = handle.build_nspawn_command();
+
+        let args: Vec<String> = cmd
+            .get_args()
+            .map(|s| s.to_string_lossy().into_owned())
+            .collect();
+        let args_joined = args.join(" ");
+
+        assert!(!args_joined.contains("--private-users"));
+        assert!(!args_joined.contains("--private-users-uid"));
+        assert!(!args_joined.contains("--private-users-gid"));
+    }
+
+    #[test]
+    fn test_nspawn_user_namespace_enabled() {
+        let config = test_config().with_user_namespace(true);
+        let handle = SandboxHandle::new(PathBuf::from("/tmp/test-build"), config);
+        let cmd = handle.build_nspawn_command();
+
+        let args: Vec<String> = cmd
+            .get_args()
+            .map(|s| s.to_string_lossy().into_owned())
+            .collect();
+        let args_joined = args.join(" ");
+
+        assert!(args_joined.contains("--private-users"));
+        // Without explicit maps, no uid/gid mapping args
+        assert!(!args_joined.contains("--private-users-uid"));
+        assert!(!args_joined.contains("--private-users-gid"));
+    }
+
+    #[test]
+    fn test_nspawn_user_namespace_with_id_maps() {
+        let config = test_config()
+            .with_user_namespace(true)
+            .with_uid_map("0:1000:1")
+            .with_gid_map("0:1000:1");
+        let handle = SandboxHandle::new(PathBuf::from("/tmp/test-build"), config);
+        let cmd = handle.build_nspawn_command();
+
+        let args: Vec<String> = cmd
+            .get_args()
+            .map(|s| s.to_string_lossy().into_owned())
+            .collect();
+        let args_joined = args.join(" ");
+
+        assert!(args_joined.contains("--private-users"));
+        assert!(args_joined.contains("--private-users-uid=0:1000:1"));
+        assert!(args_joined.contains("--private-users-gid=0:1000:1"));
+    }
+
+    #[test]
+    fn test_interactive_command_inherits_user_namespace() {
+        let config = test_config()
+            .with_user_namespace(true)
+            .with_uid_map("0:1000:1")
+            .with_gid_map("0:1000:1");
+        let handle = SandboxHandle::new(PathBuf::from("/tmp/test-build"), config);
+        let cmd = handle.build_interactive_command();
+
+        let args: Vec<String> = cmd
+            .get_args()
+            .map(|s| s.to_string_lossy().into_owned())
+            .collect();
+        let args_joined = args.join(" ");
+
+        assert!(args_joined.contains("--private-users"));
+        assert!(args_joined.contains("--private-users-uid=0:1000:1"));
+        assert!(args_joined.contains("--private-users-gid=0:1000:1"));
+        // Interactive command should NOT have --quiet
+        assert!(!args_joined.contains("--quiet"));
+    }
+
+    #[test]
+    fn test_nspawn_drop_capabilities() {
+        let config = test_config()
+            .with_drop_capability("CAP_SYS_PTRACE")
+            .with_drop_capability("CAP_SYS_ADMIN");
+        let handle = SandboxHandle::new(PathBuf::from("/tmp/test-build"), config);
+        let cmd = handle.build_nspawn_command();
+
+        let args: Vec<String> = cmd
+            .get_args()
+            .map(|s| s.to_string_lossy().into_owned())
+            .collect();
+        let args_joined = args.join(" ");
+
+        assert!(args_joined.contains("--drop-capability=CAP_SYS_PTRACE,CAP_SYS_ADMIN"));
+    }
+
+    #[test]
+    fn test_nspawn_syscall_filter() {
+        let config = test_config()
+            .with_syscall_filter("~ptrace")
+            .with_syscall_filter("~kexec_load");
+        let handle = SandboxHandle::new(PathBuf::from("/tmp/test-build"), config);
+        let cmd = handle.build_nspawn_command();
+
+        let args: Vec<String> = cmd
+            .get_args()
+            .map(|s| s.to_string_lossy().into_owned())
+            .collect();
+        let args_joined = args.join(" ");
+
+        assert!(args_joined.contains("--system-call-filter=~ptrace"));
+        assert!(args_joined.contains("--system-call-filter=~kexec_load"));
+    }
+
+    #[test]
+    fn test_nspawn_no_seccomp_by_default() {
+        let config = test_config();
+        let handle = SandboxHandle::new(PathBuf::from("/tmp/test-build"), config);
+        let cmd = handle.build_nspawn_command();
+
+        let args: Vec<String> = cmd
+            .get_args()
+            .map(|s| s.to_string_lossy().into_owned())
+            .collect();
+        let args_joined = args.join(" ");
+
+        assert!(!args_joined.contains("--drop-capability"));
+        assert!(!args_joined.contains("--system-call-filter"));
+    }
+
+    #[test]
+    fn test_combined_isolation_features() {
+        let config = test_config()
+            .with_network_isolation(true)
+            .with_user_namespace(true)
+            .with_uid_map("0:1000:1")
+            .with_memory_limit("4G")
+            .with_drop_capability("CAP_SYS_PTRACE")
+            .with_syscall_filter("~ptrace");
+        let handle = SandboxHandle::new(PathBuf::from("/tmp/test-build"), config);
+        let cmd = handle.build_nspawn_command();
+
+        let args: Vec<String> = cmd
+            .get_args()
+            .map(|s| s.to_string_lossy().into_owned())
+            .collect();
+        let args_joined = args.join(" ");
+
+        assert!(args_joined.contains("--private-network"));
+        assert!(args_joined.contains("--private-users"));
+        assert!(args_joined.contains("--private-users-uid=0:1000:1"));
+        assert!(args_joined.contains("--property=MemoryMax=4G"));
+        assert!(args_joined.contains("--drop-capability=CAP_SYS_PTRACE"));
+        assert!(args_joined.contains("--system-call-filter=~ptrace"));
     }
 
     #[test]

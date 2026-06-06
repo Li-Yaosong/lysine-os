@@ -5,6 +5,13 @@ on:
     branches: [main, staging, 'phase/*']
   pull_request:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      run_vm_test:
+        description: 'Run QEMU/KVM VM test'
+        required: false
+        default: 'false'
+        type: boolean
 
 env:
   CARGO_TERM_COLOR: always
@@ -109,3 +116,33 @@ jobs:
             -v ${{ github.workspace }}/ribosome:/workspace/ribosome \
             lysine-dev:phase0 \
             cargo check --manifest-path /workspace/ribosome/Cargo.toml
+
+  vm-test:
+    name: VM Test (QEMU/KVM)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.run_vm_test == 'true'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install QEMU
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-x86 qemu-utils
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+
+      - name: Build ribosome
+        working-directory: ribosome
+        run: cargo build --release
+
+      - name: Check QEMU environment
+        run: ./tools/qemu-test.sh check
+
+      - name: Create VM environment
+        run: sudo ./tools/qemu-test.sh create
+
+      - name: Run VM test
+        run: sudo ./tools/qemu-test.sh test

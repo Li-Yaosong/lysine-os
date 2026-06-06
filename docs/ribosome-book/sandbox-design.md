@@ -6,7 +6,16 @@
 
 **范围（Sprint 3）**：基于 systemd-nspawn 的沙箱创建、执行、清理；集成到 BuildExecutor。
 
-**后续迭代**：自定义最小 rootfs、seccomp 过滤、Btrfs subvolume 构建、User namespace 非 root 构建。
+**Sprint 3 已实现**：
+- User namespace 支持（`--private-users` + UID/GID 映射）
+- Capability dropping（`--drop-capability`）
+- System call 过滤（`--system-call-filter`）
+- 自定义 rootfs 支持（`MinimalRootfs` + `RootfsSpec`）
+- Btrfs subvolume 构建目录（快速创建/清理）
+
+**后续迭代**：
+- 最小 rootfs 自动创建脚本（从 .prot 包安装）
+- seccomp 自定义 BPF 规则（如需更精细控制）
 
 ---
 
@@ -28,13 +37,17 @@ flowchart TB
         sc[SandboxConfig]
         sh[SandboxHandle]
         bm[BindMount]
+        rootfs[MinimalRootfs]
+        btrfs[Btrfs Subvolume]
     end
 
     subgraph nspawn[systemd-nspawn]
         ns_mount["Mount namespace"]
         ns_pid["PID namespace"]
         ns_net["Network namespace<br/>--private-network"]
+        ns_user["User namespace<br/>--private-users"]
         cgroup["cgroup v2<br/>MemoryMax / CPUQuota"]
+        seccomp["Seccomp<br/>--system-call-filter<br/>--drop-capability"]
     end
 
     cli --> core
@@ -42,6 +55,8 @@ flowchart TB
     sh --> nspawn
     sc --> sh
     bm --> sh
+    rootfs --> sc
+    btrfs --> sh
 ```
 
 ### 模块职责
@@ -51,6 +66,8 @@ flowchart TB
 | `lib.rs` | 公开 API 导出、crate 级文档 |
 | `config.rs` | `SandboxConfig`、`BindMount` 类型定义与 Builder 模式 |
 | `sandbox.rs` | `SandboxHandle` 核心实现：create / run_phase / destroy |
+| `rootfs.rs` | `MinimalRootfs` 最小根文件系统管理 |
+| `btrfs.rs` | Btrfs subvolume 检测与操作 |
 | `error.rs` | `SandboxError` 错误类型定义 |
 
 ---
@@ -61,13 +78,18 @@ flowchart TB
 
 ```rust
 pub struct SandboxConfig {
-    pub rootfs: PathBuf,              // 容器根文件系统（默认 "/"）
-    pub network_isolation: bool,      // 网络隔离
-    pub memory_limit: Option<String>, // 内存限制（如 "8G"）
-    pub cpu_quota: Option<String>,    // CPU 配额（如 "50%"）
-    pub bind_mounts: Vec<BindMount>,  // 绑定挂载列表
-    pub env_vars: Vec<(String, String)>, // 注入的环境变量
-    pub working_dir: PathBuf,         // 沙箱内工作目录
+    pub rootfs: PathBuf,                          // 容器根文件系统
+    pub network_isolation: bool,                  // 网络隔离
+    pub memory_limit: Option<String>,             // 内存限制
+    pub cpu_quota: Option<String>,                // CPU 配额
+    pub bind_mounts: Vec<BindMount>,              // 绑定挂载列表
+    pub env_vars: Vec<(String, String)>,          // 注入的环境变量
+    pub working_dir: PathBuf,                     // 沙箱内工作目录
+    pub user_namespace: bool,                     // User namespace 启用
+    pub uid_map: Option<String>,                  // UID 映射
+    pub gid_map: Option<String>,                  // GID 映射
+    pub drop_capabilities: Vec<String>,           // 要丢弃的能力
+    pub syscall_filter: Vec<String>,              // 系统调用过滤规则
 }
 ```
 
@@ -79,6 +101,11 @@ SandboxConfig::new_for_build(build_base)
     .with_memory_limit("8G")
     .with_cpu_quota("50%")
     .with_env("DESTDIR", "/srv/pkg")
+    .with_user_namespace(true)
+    .with_uid_map("0:1000:1")
+    .with_gid_map("0:1000:1")
+    .with_drop_capability("CAP_SYS_PTRACE")
+    .with_syscall_filter("~ptrace")
 ```
 
 ### BindMount
@@ -91,8 +118,6 @@ pub struct BindMount {
 }
 ```
 
-转为 nspawn 参数格式：`--bind=<host_path>:<sandbox_path>` 或 `--bind=<host_path>:<sandbox_path>:rw`
-
 ### SandboxHandle
 
 ```rust
@@ -100,20 +125,23 @@ pub struct SandboxHandle { ... }
 
 impl SandboxHandle {
     pub fn new(build_base: PathBuf, config: SandboxConfig) -> Self;
-    pub fn create(&self) -> Result<()>;
+    pub fn create(&self) -> Result<()>;       // Btrfs subvolume 自动检测
     pub fn run_phase(&self, script: &str) -> Result<PhaseOutput>;
-    pub fn destroy(&self) -> Result<()>;
+    pub fn destroy(&self) -> Result<()>;      // Btrfs subvolume 快速清理
 }
 ```
 
-### PhaseOutput
+### MinimalRootfs
 
 ```rust
-pub struct PhaseOutput {
-    pub success: bool,
-    pub stdout: String,
-    pub stderr: String,
-    pub exit_code: Option<i32>,
+pub struct MinimalRootfs { ... }
+
+impl MinimalRootfs {
+    pub fn new(path: PathBuf) -> Self;
+    pub fn create(&self) -> Result<()>;
+    pub fn populate_from_host(&self, tools: &[&str]) -> Result<PopulateReport>;
+    pub fn verify(&self) -> Result<VerifyReport>;
+    pub fn remove(&self) -> Result<()>;
 }
 ```
 
@@ -132,6 +160,11 @@ systemd-nspawn \
     --bind=<build_base>/build:/srv/build \
     --bind=<build_base>/pkg:/srv/pkg:rw \
     [--private-network] \
+    [--private-users] \
+    [--private-users-uid=0:1000:1] \
+    [--private-users-gid=0:1000:1] \
+    [--drop-capability=CAP_SYS_PTRACE,CAP_SYS_ADMIN] \
+    [--system-call-filter=~ptrace] \
     [--property=MemoryMax=8G] \
     [--property=CPUQuota=50%] \
     --setenv=DESTDIR=/srv/pkg \
@@ -152,79 +185,19 @@ systemd-nspawn \
 | Network namespace | `--private-network` | 已实现 | 可选离线构建模式 |
 | cgroup 内存限制 | `--property=MemoryMax` | 已实现 | 防止 OOM 影响宿主 |
 | cgroup CPU 限制 | `--property=CPUQuota` | 已实现 | 防止 CPU 饥饿 |
-| User namespace | `--private-users` | 后续迭代 | 非 root 构建支持 |
-| seccomp 过滤 | 自定义 BPF | 后续迭代 | 限制系统调用 |
-| Btrfs subvolume | `--bind=` + subvol | 后续迭代 | 快速清理构建目录 |
-
-### 为什么选择 systemd-nspawn
-
-根据项目决策原则 **简洁性 > 安全性 > 性能 > 体验**：
-
-| 维度 | systemd-nspawn | 直接 Linux namespace API |
-|------|---------------|------------------------|
-| 简洁性 | 高（一个命令完成所有隔离） | 低（需要 clone/unshare/pivot_root 等） |
-| 安全性 | 高（systemd 团队维护） | 中（自己实现容易出错） |
-| 性能 | 中（有容器 overhead） | 高（无中间层） |
-| 维护成本 | 低 | 高 |
-
-nspawn 是架构文档明确指定的方案，与 LFS 13.0 systemd 版天然契合。
-
----
-
-## 沙箱内路径映射
-
-构建目录在沙箱内有固定映射：
-
-```
-宿主路径                              沙箱内路径        用途
-<build_root>/<pkg>-<ver>/src    →    /srv/src      源码
-<build_root>/<pkg>-<ver>/build  →    /srv/build    构建
-<build_root>/<pkg>-<ver>/pkg    →    /srv/pkg      安装目标
-```
-
-因此沙箱内的环境变量使用 `/srv/...` 路径：
-
-| 变量 | 沙箱内值 | 说明 |
-|------|---------|------|
-| `DESTDIR` | `/srv/pkg` | 安装目标 |
-| `SRCDIR` | `/srv/src` | 源码目录 |
-| `BUILDDIR` | `/srv/build` | 构建目录 |
-| `NPROC` | 宿主检测 | CPU 核心数 |
-| `ARCH` | `x86_64` | 目标架构 |
-| `PREFIX` | `/usr` | 安装前缀 |
-
----
-
-## 与 BuildExecutor 的集成
-
-### 执行路径选择
-
-```mermaid
-flowchart TB
-    start[BuildExecutor::build] --> check{sandbox_config<br/>is Some?}
-    check -->|Yes| create_sandbox[SandboxHandle::create]
-    check -->|No| create_dirs[ctx.create_dirs<br/>Sprint 1 模式]
-    create_sandbox --> loop_phases[遍历 build phases]
-    create_dirs --> loop_phases
-    loop_phases --> check2{sandbox<br/>存在?}
-    check2 -->|Yes| sandboxed[run_phase_sandboxed<br/>nspawn 执行]
-    check2 -->|No| host[run_phase_host<br/>bash 直接执行]
-    sandboxed --> next[下一 phase]
-    host --> next
-```
-
-### 向后兼容
-
-- `BuildConfig::new()` 默认 `sandbox_config: None`，行为与 Sprint 1 完全一致
-- 只有用户显式传入 `--sandbox` 或 `--no-network` 时才启用沙箱
-- 现有测试全部不受影响
+| User namespace | `--private-users` | **已实现** | 非 root 构建支持 |
+| Capability dropping | `--drop-capability` | **已实现** | 丢弃危险能力 |
+| System call 过滤 | `--system-call-filter` | **已实现** | 限制系统调用 |
+| 自定义 rootfs | `--directory=<path>` | **已实现** | 隔离的构建文件系统 |
+| Btrfs subvolume | 自动检测 | **已实现** | 快速创建/清理构建目录 |
+| seccomp 自定义 BPF | 自定义规则 | 后续迭代 | 更精细的 syscall 白名单 |
 
 ---
 
 ## CLI 用法
 
 ```bash
-# 普通构建（无沙箱，Sprint 1 模式）
+# 普通构建（无沙箱）
 ribosome build nucleus/core/bash/5.2.37.mRNA
 
 # 沙箱构建
@@ -236,9 +209,25 @@ ribosome build --no-network nucleus/core/gcc/14.2.0.mRNA
 # 带内存限制的沙箱构建
 ribosome build --sandbox --memory-limit 8G nucleus/core/gcc/14.2.0.mRNA
 
+# User namespace 非特权构建
+ribosome build --user-namespace --uid-map "0:1000:1" --gid-map "0:1000:1" nucleus/core/gcc/14.2.0.mRNA
+
+# 丢弃危险能力 + 系统调用过滤
+ribosome build --sandbox --drop-capabilities "CAP_SYS_PTRACE,CAP_SYS_ADMIN" --syscall-filter "~ptrace" nucleus/core/gcc/14.2.0.mRNA
+
+# 使用自定义 rootfs
+ribosome build --sandbox --rootfs /var/ribosome/rootfs-minimal nucleus/core/gcc/14.2.0.mRNA
+
+# 全特性沙箱构建
+ribosome build \
+    --sandbox --no-network --memory-limit 8G \
+    --user-namespace --drop-capabilities "CAP_SYS_PTRACE" \
+    --syscall-filter "~ptrace" \
+    --rootfs /var/ribosome/rootfs-minimal \
+    nucleus/core/gcc/14.2.0.mRNA
+
 # 进入构建沙箱调试
 ribosome shell gcc-14.2.0
-ribosome shell /var/ribosome/build/gcc-14.2.0
 ```
 
 ---
@@ -247,43 +236,40 @@ ribosome shell /var/ribosome/build/gcc-14.2.0
 
 ### 已实现
 
-- **Mount namespace**：构建脚本只能访问 bind mount 的目录，无法访问宿主其他路径
+- **Mount namespace**：构建脚本只能访问 bind mount 的目录
 - **PID namespace**：构建进程无法看到或影响宿主进程
 - **Network namespace**：`--no-network` 模式下完全禁用网络访问
 - **cgroup 资源限制**：防止构建耗尽宿主内存和 CPU
 - **只读挂载**：src 和 build 目录默认只读，只有 pkg 目录可写
+- **User namespace**：`--user-namespace` 支持非特权构建，UID/GID 映射
+- **Capability dropping**：`--drop-capabilities` 丢弃危险能力
+- **System call 过滤**：`--syscall-filter` 限制系统调用
+- **自定义 rootfs**：`--rootfs` 使用独立的根文件系统
+- **Btrfs subvolume**：自动检测，快速创建/清理
 
 ### 后续迭代
 
-- **seccomp BPF 过滤**：白名单模式限制系统调用
-- **最小 rootfs**：使用精简的构建专用根文件系统而非宿主根
-- **User namespace**：支持非 root 用户构建
-- **Btrfs subvolume**：利用快照实现构建目录的快速创建和清理
+- **seccomp 自定义 BPF**：更精细的 syscall 白名单
+- **最小 rootfs 自动构建**：从 .prot 包自动安装
 
 ---
 
 ## 测试策略
 
-### 单元测试（7 个，已实现）
+### 单元测试（32 个）
 
-| 测试 | 验证内容 |
-|------|---------|
-| `test_sandbox_config_default_values` | 默认配置正确性 |
-| `test_bind_mount_nspawn_arg_readonly` | 只读 bind mount 参数格式 |
-| `test_bind_mount_nspawn_arg_writable` | 可写 bind mount 参数格式 |
-| `test_nspawn_command_construction` | nspawn 命令参数完整性 |
-| `test_nspawn_network_isolation_flag` | 网络隔离标志 |
-| `test_nspawn_memory_limit` | 内存限制参数 |
-| `test_nspawn_env_vars` | 环境变量注入 |
+sandbox 模块（17 个）覆盖：配置默认值、bind mount 参数、nspawn 命令构建、网络隔离、内存限制、环境变量、User namespace（默认/启用/UID映射）、交互命令继承、capability 丢弃、syscall 过滤、seccomp 默认关闭、组合隔离特性、目录创建和幂等性。
 
-### 集成测试（需要 root/nspawn，手动运行）
+btrfs 模块（7 个）覆盖：Btrfs 检测、subvolume 检测、普通目录判断、构建目录创建/幂等/删除、不存在目录处理。
+
+rootfs 模块（8 个）覆盖：目录结构创建、幂等创建、必要文件生成、空 rootfs 验证、完整 rootfs 验证、rootfs 删除、二进制查找成功/失败。
+
+### 集成测试
 
 ```bash
 # 在有 systemd-nspawn 的环境中手动运行
 sudo cargo test -p ribosome-core -- --ignored
 ```
-
-测试用 `#[ignore]` 标记，CI 中自动跳过。
 
 ---
 

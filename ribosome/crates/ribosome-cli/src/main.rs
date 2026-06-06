@@ -38,6 +38,24 @@ enum Commands {
         /// Memory limit for the sandbox (e.g., "8G", "512M")
         #[arg(long)]
         memory_limit: Option<String>,
+        /// Enable user namespace for unprivileged builds
+        #[arg(long)]
+        user_namespace: bool,
+        /// UID mapping for user namespace (e.g., "0:1000:1")
+        #[arg(long)]
+        uid_map: Option<String>,
+        /// GID mapping for user namespace (e.g., "0:1000:1")
+        #[arg(long)]
+        gid_map: Option<String>,
+        /// Comma-separated list of capabilities to drop (e.g., "CAP_SYS_PTRACE,CAP_SYS_ADMIN")
+        #[arg(long)]
+        drop_capabilities: Option<String>,
+        /// System call filter rule (may be repeated). Use ~prefix to deny, @group for groups
+        #[arg(long)]
+        syscall_filter: Vec<String>,
+        /// Custom root filesystem path for the sandbox (default: host root "/")
+        #[arg(long)]
+        rootfs: Option<PathBuf>,
     },
     /// Enter build sandbox for debugging
     Shell {
@@ -120,14 +138,26 @@ fn run() -> Result<()> {
             sandbox,
             no_network,
             memory_limit,
-        } => cmd_build(
-            &package,
-            &build_root,
+            user_namespace,
+            uid_map,
+            gid_map,
+            drop_capabilities,
+            syscall_filter,
+            rootfs,
+        } => cmd_build(BuildArgs {
+            mrna_path: &package,
+            build_root: &build_root,
             jobs,
             sandbox,
             no_network,
-            memory_limit.as_deref(),
-        ),
+            memory_limit: memory_limit.as_deref(),
+            user_namespace,
+            uid_map: uid_map.as_deref(),
+            gid_map: gid_map.as_deref(),
+            drop_capabilities: drop_capabilities.as_deref(),
+            syscall_filter: syscall_filter.as_slice(),
+            rootfs: rootfs.as_deref(),
+        }),
         Commands::Shell {
             package,
             build_root,
@@ -286,45 +316,82 @@ fn collect_mrna_paths(path: &Path) -> Result<Vec<PathBuf>> {
     Ok(files)
 }
 
-fn cmd_build(
-    mrna_path: &Path,
-    build_root: &Path,
+/// Parsed build command arguments.
+struct BuildArgs<'a> {
+    mrna_path: &'a Path,
+    build_root: &'a Path,
     jobs: Option<usize>,
     sandbox: bool,
     no_network: bool,
-    memory_limit: Option<&str>,
-) -> Result<()> {
-    let mrna = parse_mrna_file(mrna_path)
-        .with_context(|| format!("failed to parse {}", mrna_path.display()))?;
+    memory_limit: Option<&'a str>,
+    user_namespace: bool,
+    uid_map: Option<&'a str>,
+    gid_map: Option<&'a str>,
+    drop_capabilities: Option<&'a str>,
+    syscall_filter: &'a [String],
+    rootfs: Option<&'a Path>,
+}
+
+fn cmd_build(args: BuildArgs<'_>) -> Result<()> {
+    let mrna = parse_mrna_file(args.mrna_path)
+        .with_context(|| format!("failed to parse {}", args.mrna_path.display()))?;
 
     let label = format!("{}-{}", mrna.name, mrna.version);
     tracing::info!("building {label}");
 
-    let use_sandbox = sandbox || no_network;
+    let use_sandbox = args.sandbox || args.no_network || args.user_namespace;
 
     if use_sandbox {
         println!("[SANDBOX] Build will run inside membrane sandbox (systemd-nspawn)");
-        if no_network {
+        if args.no_network {
             println!("[SANDBOX] Network isolation enabled");
+        }
+        if args.user_namespace {
+            println!("[SANDBOX] User namespace enabled (unprivileged mode)");
         }
     } else {
         eprintln!("\x1b[33m[WARN] Building without membrane sandbox — scripts execute directly on host.\x1b[0m");
         eprintln!("\x1b[33m        Use --sandbox for isolated builds.\x1b[0m\n");
     }
 
-    let mut config = ribosome_core::BuildConfig::new(build_root);
-    if let Some(j) = jobs {
+    let mut config = ribosome_core::BuildConfig::new(args.build_root);
+    if let Some(j) = args.jobs {
         config.jobs = j;
     }
 
     if use_sandbox {
         let base_dir = config.build_root.join(&label);
         let mut sandbox_config = SandboxConfig::new_for_build(base_dir);
-        if no_network {
+        if args.no_network {
             sandbox_config = sandbox_config.with_network_isolation(true);
         }
-        if let Some(mem) = memory_limit {
+        if let Some(mem) = args.memory_limit {
             sandbox_config = sandbox_config.with_memory_limit(mem);
+        }
+        if args.user_namespace {
+            sandbox_config = sandbox_config.with_user_namespace(true);
+            if let Some(uid) = args.uid_map {
+                sandbox_config = sandbox_config.with_uid_map(uid);
+            }
+            if let Some(gid) = args.gid_map {
+                sandbox_config = sandbox_config.with_gid_map(gid);
+            }
+        }
+        if let Some(caps) = args.drop_capabilities {
+            for cap in caps.split(',') {
+                let cap = cap.trim();
+                if !cap.is_empty() {
+                    sandbox_config = sandbox_config.with_drop_capability(cap);
+                }
+            }
+        }
+        for filter in args.syscall_filter {
+            if !filter.is_empty() {
+                sandbox_config = sandbox_config.with_syscall_filter(filter);
+            }
+        }
+        if let Some(rootfs_path) = args.rootfs {
+            sandbox_config.rootfs = rootfs_path.to_path_buf();
         }
         config.sandbox_config = Some(sandbox_config);
     }

@@ -1,0 +1,24 @@
+# QEMU/KVM VM 测试配置
+# 用于 tools/qemu-test.sh
+
+[vm]
+memory = "2G"
+cpu = "host"
+disk_size = "20G"
+format = "qcow2"
+
+[kernel]
+path = "/var/ribosome/test-kernel"
+cmdline = "root=/dev/sda console=ttyS0 panic=1 init=/bin/init"
+
+[network]
+# 测试时一般不需要网络
+enable = false
+
+[output]
+# VM 输出日志文件
+log = "/tmp/qemu-test-output.log"
+# 测试超时（秒）
+timeout = 60
+# 验证关键词
+success_marker = "Test PASSED"

@@ -33,6 +33,29 @@ pub struct SandboxConfig {
 
     /// Working directory inside the sandbox where build scripts execute.
     pub working_dir: PathBuf,
+
+    /// Enable user namespace for unprivileged builds.
+    /// When true, `--private-users` is passed to nspawn.
+    pub user_namespace: bool,
+
+    /// UID mapping for user namespace (e.g., "0:1000:1").
+    /// Format: `"container_uid:host_uid:count"`.
+    pub uid_map: Option<String>,
+
+    /// GID mapping for user namespace (e.g., "0:1000:1").
+    /// Format: `"container_gid:host_gid:count"`.
+    pub gid_map: Option<String>,
+
+    /// Capabilities to drop from the sandbox.
+    /// Passed as `--drop-capability=<caps>` to nspawn.
+    /// Example: `["CAP_SYS_ADMIN", "CAP_SYS_PTRACE"]`.
+    pub drop_capabilities: Vec<String>,
+
+    /// System call filter configuration.
+    /// Passed as `--system-call-filter=<filter>` to nspawn.
+    /// Use `~` prefix to prohibit syscalls (e.g., "~ptrace").
+    /// Use `@group` syntax for syscall groups (e.g., "@clock").
+    pub syscall_filter: Vec<String>,
 }
 
 impl SandboxConfig {
@@ -52,6 +75,11 @@ impl SandboxConfig {
             ],
             env_vars: Vec::new(),
             working_dir: PathBuf::from("/srv/build"),
+            user_namespace: false,
+            uid_map: None,
+            gid_map: None,
+            drop_capabilities: Vec::new(),
+            syscall_filter: Vec::new(),
         }
     }
 
@@ -89,6 +117,58 @@ impl SandboxConfig {
             "environment variable name must not contain '=': {key}"
         );
         self.env_vars.push((key, value.into()));
+        self
+    }
+
+    /// Enable user namespace for unprivileged builds.
+    ///
+    /// When enabled, `--private-users` is passed to `systemd-nspawn`, allowing
+    /// the sandbox to run without root privileges. The UID/GID inside the
+    /// container are mapped so that the building user appears as root (UID 0).
+    ///
+    /// If `uid_map` / `gid_map` are not explicitly set, nspawn will use its
+    /// default UID allocation (typically starting from 131072).
+    pub fn with_user_namespace(mut self, enabled: bool) -> Self {
+        self.user_namespace = enabled;
+        self
+    }
+
+    /// Set explicit UID mapping for the user namespace.
+    ///
+    /// Format: `"container_uid:host_uid:count"` (e.g., `"0:1000:1"`).
+    pub fn with_uid_map(mut self, map: impl Into<String>) -> Self {
+        self.uid_map = Some(map.into());
+        self
+    }
+
+    /// Set explicit GID mapping for the user namespace.
+    ///
+    /// Format: `"container_gid:host_gid:count"` (e.g., `"0:1000:1"`).
+    pub fn with_gid_map(mut self, map: impl Into<String>) -> Self {
+        self.gid_map = Some(map.into());
+        self
+    }
+
+    /// Add a capability to drop from the sandbox.
+    ///
+    /// May be called multiple times. Each capability is passed to
+    /// `--drop-capability=` on the nspawn command line.
+    ///
+    /// Example: `"CAP_SYS_PTRACE"`, `"CAP_SYS_ADMIN"`.
+    pub fn with_drop_capability(mut self, cap: impl Into<String>) -> Self {
+        self.drop_capabilities.push(cap.into());
+        self
+    }
+
+    /// Add a system call filter rule.
+    ///
+    /// Each entry is passed to `--system-call-filter=` on the nspawn command
+    /// line. Use `~` prefix to prohibit syscalls, or `@group` for syscall
+    /// groups (e.g., `"@clock"`, `"~ptrace"`).
+    ///
+    /// May be called multiple times to combine positive and negative lists.
+    pub fn with_syscall_filter(mut self, filter: impl Into<String>) -> Self {
+        self.syscall_filter.push(filter.into());
         self
     }
 }

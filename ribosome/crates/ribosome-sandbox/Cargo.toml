@@ -12,6 +12,10 @@ authors.workspace = true
 thiserror = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }
+libc = "0.2"  # For statfs to detect Btrfs filesystem
+
+[target.'cfg(not(target_os = "linux"))'.dependencies]
+libc = { version = "0.2", optional = true }  # Only needed on Linux
 
 [dev-dependencies]
 tempfile = "3.14"

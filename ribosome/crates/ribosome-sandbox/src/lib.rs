@@ -28,10 +28,13 @@
 //! handle.destroy().expect("cleanup failed");
 //! ```
 
+pub mod btrfs;
 pub mod config;
 pub mod error;
+pub mod rootfs;
 pub mod sandbox;
 
 pub use config::{BindMount, SandboxConfig};
 pub use error::{Result, SandboxError};
+pub use rootfs::{MinimalRootfs, PopulateReport, RootfsSpec, VerifyReport};
 pub use sandbox::{SandboxHandle, SandboxPhaseOutput};

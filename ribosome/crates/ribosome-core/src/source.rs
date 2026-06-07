@@ -205,6 +205,11 @@ pub fn extract_source(mrna: &MrnaFile, store: &VacuoleStore, src_dir: &Path) -> 
         return Ok(());
     }
 
+    // Clean SRCDIR if it exists from a previous attempt, then extract fresh
+    if src_dir.exists() {
+        std::fs::remove_dir_all(src_dir).map_err(|e| CoreError::io(src_dir, e.to_string()))?;
+    }
+
     let sources_with_hash: Vec<_> = mrna.sources.iter().filter(|s| s.hash.is_some()).collect();
 
     if sources_with_hash.is_empty() {

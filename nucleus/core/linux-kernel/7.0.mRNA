@@ -1,0 +1,49 @@
+api-version: 1
+name: linux-kernel
+version: 7.0
+release: 1
+
+description: The Linux kernel
+homepage: https://www.kernel.org/
+license: GPL-2.0-only
+
+sources:
+  - url: https://www.kernel.org/pub/linux/kernel/v7.x/linux-7.0.tar.xz
+    hash: sha256:bb7f6d80b387c757b7d14bb93028fcb90f793c5c0d367736ee815a100b3891f0
+
+features:
+  default: []
+  options:
+    debug:
+      description: Enable kernel debugging support
+    hardened:
+      description: Enable security hardening options
+    module-signing:
+      description: Enable module signing
+
+build:
+  prepare: |
+    make mrproper
+    make defconfig
+  compile: |
+    make -j$NPROC
+  install: |
+    mkdir -p "$DESTDIR"/boot
+    cp -v arch/x86/boot/bzImage "$DESTDIR"/boot/vmlinuz-7.0-lysine
+    cp -v System.map "$DESTDIR"/boot/System.map-7.0-lysine
+    cp -v .config "$DESTDIR"/boot/config-7.0-lysine
+    make INSTALL_MOD_PATH="$DESTDIR" modules_install
+
+outputs:
+  main:
+    description: The Linux kernel image and modules
+  headers:
+    description: Linux kernel headers
+    files:
+      - /usr/include/linux/**
+      - /usr/include/asm-generic/**
+      - /usr/include/asm-x86/**
+
+tags:
+  - kernel
+  - core

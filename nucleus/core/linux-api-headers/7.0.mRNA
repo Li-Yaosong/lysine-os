@@ -1,0 +1,16 @@
+api-version: 1
+name: linux-api-headers
+version: 7.0
+release: 1
+
+description: Linux kernel API headers (userspace)
+homepage: https://www.kernel.org/
+license: GPL-2.0-only
+
+sources:
+  - url: https://www.kernel.org/pub/linux/kernel/v7.x/linux-7.0.tar.xz
+    hash: sha256:bb7f6d80b387c757b7d14bb93028fcb90f793c5c0d367736ee815a100b3891f0
+
+build:
+  install: |
+    make headers_install DESTDIR="$DESTDIR"/usr

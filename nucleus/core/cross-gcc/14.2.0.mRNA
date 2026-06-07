@@ -1,0 +1,43 @@
+api-version: 1
+name: cross-gcc
+version: 14.2.0
+release: 1
+
+description: GNU Compiler Collection (cross-compile stage for LFS bootstrap)
+homepage: https://gcc.gnu.org/
+license: GPL-3.0-or-later
+
+sources:
+  - url: https://ftp.gnu.org/gnu/gcc/gcc-14.2.0/gcc-14.2.0.tar.xz
+    hash: sha256:a7b39bc69cbf9e25826c5a60ab26477001f7c08d85cec04bc0e29cabed6f3cc9
+
+patches:
+  - fix-build-with-glibc-2.40.patch
+
+build:
+  prepare: |
+    mkdir -v build && cd build
+    ../configure --prefix=/tools \
+      --target=x86_64-lysine-linux-gnu \
+      --with-sysroot=/ \
+      --with-newlib \
+      --without-headers \
+      --enable-shared \
+      --disable-nls \
+      --disable-multilib \
+      --disable-decimal-float \
+      --disable-threads \
+      --disable-libssp \
+      --disable-libgomp \
+      --disable-libquadmath \
+      --disable-libstdc++-v3 \
+      --disable-libatomic \
+      --enable-languages=c,c++
+  compile: |
+    make -j$NPROC
+  install: |
+    make DESTDIR="$DESTDIR" install
+
+tags:
+  - cross-toolchain
+  - bootstrap

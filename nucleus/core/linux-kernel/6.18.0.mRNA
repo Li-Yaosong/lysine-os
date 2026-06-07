@@ -1,0 +1,49 @@
+api-version: 1
+name: linux-kernel
+version: 6.18.0
+release: 1
+
+description: The Linux kernel
+homepage: https://www.kernel.org/
+license: GPL-2.0-only
+
+sources:
+  - url: https://www.kernel.org/pub/linux/kernel/v6.x/linux-6.18.tar.xz
+    hash: sha256:9106a4605da9e31ff17659d958782b815f9591ab308d03b0ee21aad6c7dced4b
+
+features:
+  default: []
+  options:
+    debug:
+      description: Enable kernel debugging support
+    hardened:
+      description: Enable security hardening options
+    module-signing:
+      description: Enable module signing
+
+build:
+  prepare: |
+    make mrproper
+    make defconfig
+  compile: |
+    make -j$NPROC
+  install: |
+    mkdir -p "$DESTDIR"/boot
+    cp -v arch/x86/boot/bzImage "$DESTDIR"/boot/vmlinuz-6.18.0-lysine
+    cp -v System.map "$DESTDIR"/boot/System.map-6.18.0-lysine
+    cp -v .config "$DESTDIR"/boot/config-6.18.0-lysine
+    make INSTALL_MOD_PATH="$DESTDIR" modules_install
+
+outputs:
+  main:
+    description: The Linux kernel image and modules
+  headers:
+    description: Linux kernel headers
+    files:
+      - /usr/include/linux/**
+      - /usr/include/asm-generic/**
+      - /usr/include/asm-x86/**
+
+tags:
+  - kernel
+  - core

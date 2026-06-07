@@ -73,6 +73,8 @@ pub fn fetch_sources(mrna: &MrnaFile, store: &VacuoleStore) -> Result<FetchRepor
         errors: Vec::new(),
     };
 
+    let mirrors = load_mirrors();
+
     for source in &mrna.sources {
         let filename = url_filename(&source.url);
 
@@ -99,12 +101,13 @@ pub fn fetch_sources(mrna: &MrnaFile, store: &VacuoleStore) -> Result<FetchRepor
 
         info!(package = %mrna.name, url = %source.url, "downloading source");
 
-        // Build candidate URL list: mirror first (if configured), then original.
-        let mirror_base = std::env::var("RIBOSOME_MIRROR").ok();
+        // Build candidate URL list: mirror replacements first, then original.
         let mut urls: Vec<String> = Vec::new();
-        if let Some(ref base) = mirror_base {
-            let mirror_url = format!("{}/{}", base.trim_end_matches('/'), filename);
-            urls.push(mirror_url);
+        for (from, to) in &mirrors {
+            if source.url.starts_with(from) {
+                let replaced = format!("{}{}", to, &source.url[from.len()..]);
+                urls.push(replaced);
+            }
         }
         urls.push(source.url.clone());
 
@@ -305,6 +308,7 @@ fn download_and_verify(
 
     let response = reqwest::blocking::Client::builder()
         .timeout(std::time::Duration::from_secs(300))
+        .user_agent("ribosome/0.1.0 (LysineOS build system)")
         .build()
         .map_err(|e| DownloadError {
             url: url.to_string(),
@@ -490,6 +494,55 @@ pub fn write_source_to_file(data: &[u8], dest: &Path) -> Result<PathBuf> {
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
+// Mirror configuration
+// ---------------------------------------------------------------------------
+
+/// Load mirror URL replacement rules from environment variables.
+///
+/// Supports two formats:
+/// - `RIBOSOME_MIRROR_N` (N=0,1,2...): value is `old_prefix=new_prefix`
+/// - `RIBOSOME_MIRROR_FILE`: path to a file with one `old_prefix=new_prefix` per line
+///
+/// Example:
+///   RIBOSOME_MIRROR_0=https://ftp.gnu.org/gnu/=https://mirrors.ustc.edu.cn/gnu/
+///   RIBOSOME_MIRROR_1=https://sourceware.org/pub/=https://mirrors.ustc.edu.cn/sourceware/
+fn load_mirrors() -> Vec<(String, String)> {
+    let mut mirrors: Vec<(String, String)> = Vec::new();
+
+    // Load from RIBOSOME_MIRROR_0, RIBOSOME_MIRROR_1, ...
+    for i in 0..64 {
+        if let Ok(val) = std::env::var(format!("RIBOSOME_MIRROR_{i}")) {
+            if let Some((from, to)) = val.split_once('=') {
+                let from = from.trim().to_string();
+                let to = to.trim().to_string();
+                if !from.is_empty() && !to.is_empty() {
+                    mirrors.push((from, to));
+                }
+            }
+        }
+    }
+
+    // Load from RIBOSOME_MIRROR_FILE
+    if let Ok(path) = std::env::var("RIBOSOME_MIRROR_FILE") {
+        if let Ok(content) = std::fs::read_to_string(&path) {
+            for line in content.lines() {
+                let line = line.trim();
+                if line.is_empty() || line.starts_with('#') {
+                    continue;
+                }
+                if let Some((from, to)) = line.split_once('=') {
+                    let from = from.trim().to_string();
+                    let to = to.trim().to_string();
+                    if !from.is_empty() && !to.is_empty() {
+                        mirrors.push((from, to));
+                    }
+                }
+            }
+        }
+    }
+
+    mirrors
+}
 
 #[cfg(test)]
 mod tests {
@@ -498,7 +551,7 @@ mod tests {
     #[test]
     fn url_filename_extracts_last_segment() {
         assert_eq!(
-            url_filename("https://ftp.gnu.org/gnu/gcc/gcc-14.2.0/gcc-14.2.0.tar.xz"),
+            url_filename("https://mirrors.ustc.edu.cn/gnu/gcc/gcc-14.2.0/gcc-14.2.0.tar.xz"),
             "gcc-14.2.0.tar.xz"
         );
     }

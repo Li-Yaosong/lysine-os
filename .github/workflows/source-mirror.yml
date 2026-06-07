@@ -42,42 +42,27 @@ jobs:
 
       - name: Download all source tarballs
         run: |
-          set +e
-          URLs=$(grep -rh 'url:' nucleus/core/ --include='*.mRNA' \
-            | sed 's/^[[:space:]]*url:[[:space:]]*//' | sed 's/[[:space:]]*$//' | sort -u)
+          ./ribosome/target/release/ribosome-cli fetch nucleus/core/ \
+            --cache-dir /tmp/mirror-sources
 
-          echo "URLs found:"
-          echo "$URLs" | head -5
-          echo "..."
-          total=$(echo "$URLs" | wc -l)
-          downloaded=0
-          failed=0
-
-          echo "Downloading $total source tarballs..."
-
-          echo "$URLs" | while IFS= read -r url; do
-            [[ -z "$url" ]] && continue
-            fname=$(basename "$(echo "$url" | sed 's/?.*//')")
-            target="/tmp/mirror-sources/$fname"
-
-            [[ -f "$target" ]] && continue
-
-            printf "  [%d/%d] %-50s ... " "$((downloaded + failed + 1))" "$total" "$fname"
-
-            if curl -fsSL --connect-timeout 30 --max-time 600 --retry 3 --retry-delay 5 \
-                -o "$target" "$url"; then
-              echo "OK ($(du -h "$target" | cut -f1))"
-              downloaded=$((downloaded + 1))
-            else
-              rm -f "$target"
-              echo "FAILED (curl exit: $?)"
-              failed=$((failed + 1))
-            fi
-          done
-
-          echo ""
-          echo "Download complete: $downloaded OK, $failed failed"
-          echo "Total files: $(ls /tmp/mirror-sources | wc -l)"
+      - name: Copy files from CAS for upload
+        run: |
+          mkdir -p /tmp/upload
+          # The CAS stores objects by hash; source refs point to them.
+          # Copy all ref-linked files to a flat directory for upload.
+          if [ -d /tmp/mirror-sources/refs/sources ]; then
+            for ref in /tmp/mirror-sources/refs/sources/*; do
+              [ -f "$ref" ] || continue
+              hash=$(cat "$ref")
+              shard="${hash:0:2}"
+              obj="/tmp/mirror-sources/objects/${shard}/${hash:2}"
+              fname=$(basename "$ref")
+              if [ -f "$obj" ]; then
+                cp "$obj" "/tmp/upload/${fname}"
+              fi
+            done
+          fi
+          echo "Files ready for upload: $(ls /tmp/upload | wc -l)"
 
       - name: List downloaded files
         run: |
@@ -101,7 +86,13 @@ jobs:
 
       - name: Upload to release
         run: |
-          cd /tmp/mirror-sources
+          cd /tmp/upload
+          file_count=$(ls 2>/dev/null | wc -l)
+          if [[ "$file_count" -eq 0 ]]; then
+            echo "No files to upload"
+            exit 0
+          fi
+
           overwrite_flag=""
           if [[ "${{ inputs.overwrite }}" == "true" ]]; then
             overwrite_flag="--clobber"
@@ -110,21 +101,21 @@ jobs:
           existing=$(gh release view ${{ env.RELEASE_TAG }} --repo ${{ env.MIRROR_REPO }} \
             --json assets -q ".assets[].name" 2>/dev/null || true)
 
-          echo "Uploading $(ls | wc -l) files to ${{ env.MIRROR_REPO }} release '${{ env.RELEASE_TAG }}'..."
+          echo "Uploading $file_count files to ${{ env.MIRROR_REPO }} release '${{ env.RELEASE_TAG }}'..."
           uploaded=0
           skipped=0
 
           for f in *; do
             [[ ! -f "$f" ]] && continue
             if echo "$existing" | grep -q "^${f}$" && [[ "${{ inputs.overwrite }}" != "true" ]]; then
-              ((skipped++)) || true
+              skipped=$((skipped + 1))
               continue
             fi
             echo -n "  [UPLOAD] $f ($(du -h "$f" | cut -f1)) ... "
             if gh release upload ${{ env.RELEASE_TAG }} "$f" \
-                --repo ${{ env.MIRROR_REPO }} $overwrite_flag 2>/dev/null; then
+                --repo ${{ env.MIRROR_REPO }} $overwrite_flag; then
               echo "OK"
-              ((uploaded++)) || true
+              uploaded=$((uploaded + 1))
             else
               echo "FAILED"
             fi

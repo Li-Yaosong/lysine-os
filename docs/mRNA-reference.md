@@ -87,9 +87,9 @@ features:
 
 ```yaml
 sources:
-  - url: https://ftp.gnu.org/gnu/gcc/gcc-14.2.0/gcc-14.2.0.tar.xz
+  - url: https://mirrors.ustc.edu.cn/gnu/gcc/gcc-14.2.0/gcc-14.2.0.tar.xz
     hash: sha256:a0b06c...
-  - url: https://ftp.gnu.org/gnu/gcc/gcc-14.2.0/gcc-14.2.0.tar.xz.sig
+  - url: https://mirrors.ustc.edu.cn/gnu/gcc/gcc-14.2.0/gcc-14.2.0.tar.xz.sig
     signature: gpg
     key-id: D39DC0E3
 ```
@@ -298,7 +298,7 @@ features:
       cflags: -flto=auto
 
 sources:
-  - url: https://ftp.gnu.org/gnu/gcc/gcc-14.2.0/gcc-14.2.0.tar.xz
+  - url: https://mirrors.ustc.edu.cn/gnu/gcc/gcc-14.2.0/gcc-14.2.0.tar.xz
     hash: sha256:a0b06c7b2a0e37e2e8b58b7f0c2c9c5c3b1a0d1e2f3a4b5c6d7e8f9a0b1c2d3
 
 patches:

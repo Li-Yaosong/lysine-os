@@ -89,7 +89,7 @@ jobs:
 
       - name: Fetch all sources
         env:
-          RIBOSOME_MIRROR: ${{ secrets.RIBOSOME_MIRROR }}
+          RIBOSOME_MIRROR_FILE: ${{ github.workspace }}/configs/mirrors.conf
         run: |
           ./ribosome/target/release/ribosome-cli fetch nucleus/core/ \
             --cache-dir ${{ env.BOOTSTRAP_BASE }}/cache

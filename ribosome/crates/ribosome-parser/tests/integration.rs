@@ -16,7 +16,7 @@ features:
     cxx:
       description: C++ language support
 sources:
-  - url: https://ftp.gnu.org/gnu/gcc/gcc-14.2.0/gcc-14.2.0.tar.xz
+  - url: https://mirrors.ustc.edu.cn/gnu/gcc/gcc-14.2.0/gcc-14.2.0.tar.xz
     hash: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 build:
   install: make install
@@ -50,7 +50,7 @@ patches:
   - aarch64.patch:
       condition: 'arch == "aarch64"'
 sources:
-  - url: https://ftp.gnu.org/gnu/bash/bash-5.2.37.tar.gz
+  - url: https://mirrors.ustc.edu.cn/gnu/bash/bash-5.2.37.tar.gz
     hash: sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 build:
   install: make install

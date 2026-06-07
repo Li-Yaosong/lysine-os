@@ -31,8 +31,7 @@ sources:
 
 build:
   prepare: |
-    mkdir -v build && cd build
-    ../configure --prefix=/usr \
+    $SRCDIR/configure --prefix=/usr \
       --enable-gold \
       --enable-ld=default \
       --enable-plugins \

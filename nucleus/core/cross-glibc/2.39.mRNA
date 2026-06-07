@@ -13,10 +13,9 @@ sources:
 
 build:
   prepare: |
-    mkdir -v build && cd build
-    ../configure --prefix=/tools \
+    $SRCDIR/configure --prefix=/ \
       --host=x86_64-lysine-linux-gnu \
-      --build=$(../config.guess) \
+      --build=$($SRCDIR/config.guess) \
       --enable-kernel=4.19 \
       --disable-werror \
       --enable-stack-protector=strong \

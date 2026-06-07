@@ -16,8 +16,7 @@ patches:
 
 build:
   prepare: |
-    mkdir -v build && cd build
-    ../configure --prefix=/tools \
+    $SRCDIR/configure --prefix=/ \
       --target=x86_64-lysine-linux-gnu \
       --with-sysroot=/ \
       --with-newlib \

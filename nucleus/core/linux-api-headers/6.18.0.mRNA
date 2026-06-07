@@ -13,4 +13,4 @@ sources:
 
 build:
   install: |
-    make headers_install DESTDIR="$DESTDIR"/usr
+    make headers_install INSTALL_HDR_PATH="$DESTDIR"/usr

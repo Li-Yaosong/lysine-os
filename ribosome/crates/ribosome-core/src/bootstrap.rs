@@ -125,11 +125,6 @@ pub fn bootstrap_phase(
         config.ldflags = build_profile.ldflags.clone();
         config.cache_dir = cache_dir.to_path_buf();
 
-        // Override DESTDIR to the profile's dest_root
-        let dest_dir = build_profile
-            .dest_root
-            .join(format!("{}-{}", mrna.name, mrna.version));
-
         let ctx = BuildContext::new(mrna.clone(), config);
 
         // Extract source if CAS is available — this is a hard requirement
@@ -151,8 +146,9 @@ pub fn bootstrap_phase(
                         "package built successfully"
                     );
 
-                    // Install to dest_root by copying from result.dest_dir
-                    if let Err(e) = install_to_dest(&result.dest_dir, &dest_dir) {
+                    // Merge install tree into the phase's dest_root.
+                    // e.g. pkg/tools/bin/ld → bootstrap/tools/bin/ld
+                    if let Err(e) = install_to_dest(&result.dest_dir, &build_profile.dest_root) {
                         warn!(package = %mrna.name, error = %e, "install to dest_root failed");
                     }
 

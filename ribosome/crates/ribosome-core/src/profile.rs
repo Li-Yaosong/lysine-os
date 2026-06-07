@@ -121,7 +121,7 @@ pub fn profile_for_phase(phase: BootstrapPhase) -> BuildProfile {
     match phase {
         BootstrapPhase::CrossToolchain => BuildProfile {
             name: "cross-toolchain".to_string(),
-            prefix: "/tools".to_string(),
+            prefix: "/".to_string(),
             dest_root: base.join("tools"),
             cflags: String::new(),
             cxxflags: String::new(),
@@ -134,7 +134,7 @@ pub fn profile_for_phase(phase: BootstrapPhase) -> BuildProfile {
         },
         BootstrapPhase::TempTools => BuildProfile {
             name: "temp-tools".to_string(),
-            prefix: "/tools".to_string(),
+            prefix: "/".to_string(),
             dest_root: base.join("tools"),
             cflags: String::new(),
             cxxflags: String::new(),
@@ -264,7 +264,7 @@ mod tests {
     #[test]
     fn cross_toolchain_profile_has_tools_prefix() {
         let profile = profile_for_phase(BootstrapPhase::CrossToolchain);
-        assert_eq!(profile.prefix, "/tools");
+        assert_eq!(profile.prefix, "/");
         assert!(profile.cross_target.is_some());
     }
 

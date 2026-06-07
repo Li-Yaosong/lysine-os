@@ -27,8 +27,7 @@ sources:
 
 build:
   prepare: |
-    mkdir -v build && cd build
-    ../configure --prefix=/usr \
+    $SRCDIR/configure --prefix=/usr \
       --disable-werror \
       --enable-kernel=4.19 \
       --enable-stack-protector=strong \

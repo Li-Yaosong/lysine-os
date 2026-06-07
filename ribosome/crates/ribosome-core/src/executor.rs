@@ -314,7 +314,15 @@ impl BuildExecutor {
     }
 
     /// Extract source tarballs from CAS to SRCDIR.
+    /// Idempotent: skips extraction if SRCDIR already has content.
     fn extract_sources(ctx: &BuildContext) -> Result<()> {
+        let src_dir = ctx.src_dir();
+        // Skip if sources were already extracted (e.g. by bootstrap)
+        if src_dir.exists() && std::fs::read_dir(&src_dir).map_or(false, |mut d| d.next().is_some())
+        {
+            debug!("SRCDIR already populated, skipping extraction");
+            return Ok(());
+        }
         let vacuole_path = ctx.config.cache_dir.join("vacuole");
         if !vacuole_path.exists() {
             debug!("no vacuole cache found, skipping source extraction");
@@ -323,7 +331,7 @@ impl BuildExecutor {
         let store = ribosome_store::VacuoleStore::open(&vacuole_path).map_err(|e| {
             CoreError::io(&vacuole_path, format!("failed to open vacuole store: {e}"))
         })?;
-        crate::source::extract_source(&ctx.mrna, &store, &ctx.src_dir())
+        crate::source::extract_source(&ctx.mrna, &store, &src_dir)
     }
 
     /// Build a SandboxConfig with environment variables pointing to sandbox-internal paths.
@@ -375,10 +383,9 @@ impl BuildExecutor {
         script: &str,
         transcript: &mut std::fs::File,
     ) -> Result<(bool, String)> {
-        let working_dir = match phase {
-            BuildPhase::Prepare => ctx.src_dir(),
-            _ => ctx.build_dir(),
-        };
+        // All phases execute in BUILDDIR; scripts use $SRCDIR to reference source files.
+        // This matches the LFS "separate build directory" pattern.
+        let working_dir = ctx.build_dir();
         // Ensure working directory exists
         std::fs::create_dir_all(&working_dir)
             .map_err(|e| CoreError::io(&working_dir, e.to_string()))?;

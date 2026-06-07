@@ -52,6 +52,10 @@ pub struct BuildConfig {
     pub ldflags: String,
     /// Sandbox configuration. When set, build phases run inside a membrane sandbox.
     pub sandbox_config: Option<SandboxConfig>,
+    /// Override DESTDIR. When set, build scripts see this as DESTDIR instead
+    /// of the default `<base_dir>/pkg`. Used by bootstrap to install directly
+    /// into the phase's dest_root (e.g. `/var/ribosome/bootstrap/tools`).
+    pub destdir_override: Option<PathBuf>,
 }
 
 impl BuildConfig {
@@ -70,6 +74,7 @@ impl BuildConfig {
             cxxflags: String::new(),
             ldflags: String::new(),
             sandbox_config: None,
+            destdir_override: None,
         }
     }
 }
@@ -112,7 +117,10 @@ impl BuildContext {
     }
 
     pub fn dest_dir(&self) -> PathBuf {
-        self.base_dir.join("pkg")
+        self.config
+            .destdir_override
+            .clone()
+            .unwrap_or_else(|| self.base_dir.join("pkg"))
     }
 
     pub fn transcript_path(&self) -> PathBuf {

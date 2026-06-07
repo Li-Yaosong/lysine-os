@@ -93,8 +93,7 @@ pub fn fetch_sources(mrna: &MrnaFile, store: &VacuoleStore) -> Result<FetchRepor
         let expected_hash = match &source.hash {
             Some(h) => h.clone(),
             None => {
-                warn!(package = %mrna.name, url = %source.url, "skipping source without hash");
-                report.skipped += 1;
+                debug!(package = %mrna.name, url = %source.url, "skipping source without hash (signature-only file)");
                 continue;
             }
         };
@@ -620,7 +619,7 @@ mod tests {
     }
 
     #[test]
-    fn fetch_report_counts_skipped_no_hash() {
+    fn fetch_report_signature_files_not_counted() {
         let yaml = r#"
 api-version: 1
 name: test-pkg
@@ -644,7 +643,12 @@ build:
         let store = VacuoleStore::open(tmp.path()).unwrap();
 
         let report = fetch_sources(&mrna, &store).expect("fetch should not error");
-        assert_eq!(report.skipped, 1, "source without hash should be skipped");
+        // Signature files without hash are silently ignored, not counted as skipped
+        assert_eq!(
+            report.skipped, 0,
+            "signature-only files should not be counted"
+        );
+        assert_eq!(report.fetched, 0, "nothing actually downloaded");
     }
 
     #[test]

@@ -13,8 +13,7 @@ sources:
 
 build:
   prepare: |
-    mkdir -v build && cd build
-    ../configure --prefix=/tools \
+    $SRCDIR/configure --prefix=/ \
       --with-sysroot=/ \
       --target=x86_64-lysine-linux-gnu \
       --disable-nls \

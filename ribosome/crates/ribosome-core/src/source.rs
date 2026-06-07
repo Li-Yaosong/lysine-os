@@ -250,12 +250,12 @@ pub fn extract_source(mrna: &MrnaFile, store: &VacuoleStore, src_dir: &Path) -> 
         if i == 0 {
             info!(package = %mrna.name, file = %filename, "extracting primary source to {}", src_dir.display());
             std::fs::create_dir_all(src_dir).map_err(|e| CoreError::io(src_dir, e.to_string()))?;
-            extract_tarball(&cas_path, src_dir, &filename)?;
+            extract_tarball(&cas_path, src_dir, &filename, true)?;
         } else {
             // Additional sources: extract into src_dir without hoisting,
             // so they become subdirectories (e.g. src_dir/gmp-6.3.0/)
             info!(package = %mrna.name, file = %filename, "extracting additional source into {}", src_dir.display());
-            extract_tarball(&cas_path, src_dir, &filename)?;
+            extract_tarball(&cas_path, src_dir, &filename, false)?;
         }
     }
 
@@ -421,8 +421,13 @@ fn url_filename(url: &str) -> String {
 /// Extract a tarball (auto-detecting compression) to a target directory.
 ///
 /// Supports: .tar.gz, .tar.xz, .tar.zst, .tar.bz2, .tar
-/// Hoists single top-level directory contents up to `target_dir`.
-fn extract_tarball(archive_path: &Path, target_dir: &Path, filename: &str) -> Result<()> {
+/// When `hoist` is true, hoists single top-level directory contents up to `target_dir`.
+fn extract_tarball(
+    archive_path: &Path,
+    target_dir: &Path,
+    filename: &str,
+    hoist: bool,
+) -> Result<()> {
     let file = std::fs::File::open(archive_path)
         .map_err(|e| CoreError::io(archive_path, e.to_string()))?;
 
@@ -430,19 +435,19 @@ fn extract_tarball(archive_path: &Path, target_dir: &Path, filename: &str) -> Re
 
     if filename_lower.ends_with(".tar.gz") || filename_lower.ends_with(".tgz") {
         let decoder = flate2::read::GzDecoder::new(file);
-        do_extract(&mut tar::Archive::new(decoder), target_dir)
+        do_extract(&mut tar::Archive::new(decoder), target_dir, hoist)
     } else if filename_lower.ends_with(".tar.xz") || filename_lower.ends_with(".tar.lzma") {
         let decoder = xz2::read::XzDecoder::new(file);
-        do_extract(&mut tar::Archive::new(decoder), target_dir)
+        do_extract(&mut tar::Archive::new(decoder), target_dir, hoist)
     } else if filename_lower.ends_with(".tar.zst") {
         let decoder = zstd::Decoder::new(file)
             .map_err(|e| CoreError::io(archive_path, format!("zstd decode: {e}")))?;
-        do_extract(&mut tar::Archive::new(decoder), target_dir)
+        do_extract(&mut tar::Archive::new(decoder), target_dir, hoist)
     } else if filename_lower.ends_with(".tar.bz2") {
         let decoder = bzip2::read::BzDecoder::new(file);
-        do_extract(&mut tar::Archive::new(decoder), target_dir)
+        do_extract(&mut tar::Archive::new(decoder), target_dir, hoist)
     } else if filename_lower.ends_with(".tar") {
-        do_extract(&mut tar::Archive::new(file), target_dir)
+        do_extract(&mut tar::Archive::new(file), target_dir, hoist)
     } else {
         Err(CoreError::BuildFailed {
             package: filename.to_string(),
@@ -452,7 +457,11 @@ fn extract_tarball(archive_path: &Path, target_dir: &Path, filename: &str) -> Re
 }
 
 /// Core extraction logic: unpack all entries and optionally hoist single top-level dir.
-fn do_extract<R: std::io::Read>(archive: &mut tar::Archive<R>, target_dir: &Path) -> Result<()> {
+fn do_extract<R: std::io::Read>(
+    archive: &mut tar::Archive<R>,
+    target_dir: &Path,
+    hoist: bool,
+) -> Result<()> {
     let mut top_dirs = std::collections::HashSet::new();
 
     for entry in archive
@@ -478,9 +487,11 @@ fn do_extract<R: std::io::Read>(archive: &mut tar::Archive<R>, target_dir: &Path
             });
         }
 
-        // Track top-level directory name
-        if let Some(std::path::Component::Normal(name)) = path.components().next() {
-            top_dirs.insert(name.to_string_lossy().into_owned());
+        // Track top-level directory name (only needed for hoisting)
+        if hoist {
+            if let Some(std::path::Component::Normal(name)) = path.components().next() {
+                top_dirs.insert(name.to_string_lossy().into_owned());
+            }
         }
 
         entry
@@ -489,7 +500,7 @@ fn do_extract<R: std::io::Read>(archive: &mut tar::Archive<R>, target_dir: &Path
     }
 
     // Hoist: if all entries share a single top-level directory
-    if top_dirs.len() == 1 {
+    if hoist && top_dirs.len() == 1 {
         let top_name = top_dirs.into_iter().next().unwrap();
         let inner_dir = target_dir.join(&top_name);
         if inner_dir.is_dir() {
@@ -720,7 +731,7 @@ build:
 
         // Extract
         std::fs::create_dir_all(&extract_dir).unwrap();
-        extract_tarball(&tarball_path, &extract_dir, "test-1.0.tar.gz").unwrap();
+        extract_tarball(&tarball_path, &extract_dir, "test-1.0.tar.gz", true).unwrap();
 
         // After hoisting, files should be directly in extract_dir
         assert!(extract_dir.join("README.txt").exists());

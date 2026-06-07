@@ -147,12 +147,12 @@ pub fn bootstrap_phase(
         config.ldflags = build_profile.ldflags.clone();
         config.cache_dir = cache_dir.to_path_buf();
 
-        // For cross-toolchain, temp-tools, kernel: install directly into dest_root
-        // (e.g. --prefix=/tools + DESTDIR=bootstrap/tools → bootstrap/tools/bin/ld)
+        // For cross-toolchain, temp-tools, kernel: install directly into bootstrap_base.
+        // --prefix=/tools + DESTDIR=bootstrap_base → bootstrap_base/tools/bin/ld
         // For base-system: use default pkg/ DESTDIR, then install_to_dest merges into sysroot
         let use_direct_install = phase != BootstrapPhase::BaseSystem;
         if use_direct_install {
-            config.destdir_override = Some(build_profile.dest_root.clone());
+            config.destdir_override = Some(bootstrap_base.clone());
         }
 
         let ctx = BuildContext::new(mrna.clone(), config);

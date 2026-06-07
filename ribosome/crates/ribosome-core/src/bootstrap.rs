@@ -48,6 +48,22 @@ pub fn bootstrap_phase(
     lock_file: Option<&Path>,
     continue_on_error: bool,
 ) -> Result<BootstrapPhaseReport> {
+    // Ensure paths are absolute — relative paths break when bash changes working directory
+    let build_root = if build_root.is_relative() {
+        std::path::PathBuf::from(std::fs::canonicalize(build_root).unwrap_or_else(|_| {
+            let cwd = std::env::current_dir().unwrap_or_default();
+            cwd.join(build_root)
+        }))
+    } else {
+        build_root.to_path_buf()
+    };
+    let cache_dir = if cache_dir.is_relative() {
+        let abs = std::env::current_dir().unwrap_or_default().join(cache_dir);
+        std::fs::canonicalize(&abs).unwrap_or(abs)
+    } else {
+        cache_dir.to_path_buf()
+    };
+
     let build_profile = profile::profile_for_phase(phase);
     let package_specs = profile::packages_for_phase(phase);
 
@@ -118,7 +134,7 @@ pub fn bootstrap_phase(
         );
 
         // Create build config from profile
-        let mut config = BuildConfig::new(build_root);
+        let mut config = BuildConfig::new(&build_root);
         config.prefix = build_profile.prefix.clone();
         config.cflags = build_profile.cflags.clone();
         config.cxxflags = build_profile.cxxflags.clone();

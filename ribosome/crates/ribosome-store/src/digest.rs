@@ -194,10 +194,13 @@ mod tests {
     }
 
     #[test]
-    fn ordering_consistency() {
+    fn ord_antisymmetry() {
         let a = Sha256Digest::from_bytes(b"a");
         let b = Sha256Digest::from_bytes(b"b");
-        // Ordering is deterministic: exactly one of a < b, a == b, a > b holds
+
+        // Antisymmetry: a.cmp(b) is the reverse of b.cmp(a)
         assert_eq!(a.cmp(&b), b.cmp(&a).reverse());
+        // Reflexivity: a.cmp(a) is always Equal
+        assert_eq!(a.cmp(&a), std::cmp::Ordering::Equal);
     }
 }

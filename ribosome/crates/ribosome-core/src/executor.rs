@@ -416,6 +416,15 @@ impl BuildExecutor {
         let success = output.status.success();
         let log_output = format!("{stdout}{stderr}");
 
+        if !success {
+            let exit_code = output.status.code().unwrap_or(-1);
+            warn!(
+                phase = %phase, exit_code,
+                stderr = %String::from_utf8_lossy(&output.stderr),
+                "command failed"
+            );
+        }
+
         Ok((success, log_output))
     }
 }

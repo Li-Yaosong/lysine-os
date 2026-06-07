@@ -223,11 +223,10 @@ pub fn extract_source(mrna: &MrnaFile, store: &VacuoleStore, src_dir: &Path) -> 
     let digest = match digest {
         Some(d) => d,
         None => {
-            warn!(
-                package = %mrna.name, file = %filename,
-                "source not in CAS (run 'ribosome fetch' first)"
-            );
-            return Ok(());
+            return Err(CoreError::BuildFailed {
+                package: mrna.name.clone(),
+                reason: format!("source '{filename}' not in CAS — run 'ribosome fetch' first"),
+            });
         }
     };
 

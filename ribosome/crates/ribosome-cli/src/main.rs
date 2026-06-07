@@ -672,8 +672,10 @@ fn cmd_fetch(path: &Path, cache_dir: &Path) -> Result<()> {
 
     println!("Fetching sources for {} package(s)...", mrnas.len());
 
-    let store = ribosome_store::VacuoleStore::open(cache_dir)
-        .with_context(|| format!("failed to open vacuole store at {}", cache_dir.display()))?;
+    // Vacuole store is always under cache_dir/vacuole for consistency with bootstrap
+    let vacuole_path = cache_dir.join("vacuole");
+    let store = ribosome_store::VacuoleStore::open(&vacuole_path)
+        .with_context(|| format!("failed to open vacuole store at {}", vacuole_path.display()))?;
 
     let report = ribosome_core::fetch_sources_batch(&mrnas, &store);
 

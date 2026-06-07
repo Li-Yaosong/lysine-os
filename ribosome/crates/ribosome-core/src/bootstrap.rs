@@ -132,11 +132,14 @@ pub fn bootstrap_phase(
 
         let ctx = BuildContext::new(mrna.clone(), config);
 
-        // Extract source if CAS is available
+        // Extract source if CAS is available — this is a hard requirement
         if let Some(ref store) = store {
-            if let Err(e) = source::extract_source(&mrna, store, &ctx.src_dir()) {
-                warn!(package = %mrna.name, error = %e, "source extraction failed or skipped");
-            }
+            source::extract_source(&mrna, store, &ctx.src_dir()).map_err(|e| {
+                CoreError::BuildFailed {
+                    package: mrna.name.clone(),
+                    reason: format!("source extraction failed: {e}"),
+                }
+            })?;
         }
 
         match BuildExecutor::build(&ctx) {
@@ -155,9 +158,20 @@ pub fn bootstrap_phase(
 
                     report.succeeded += 1;
                 } else {
-                    warn!(package = %mrna.name, "build did not complete");
+                    let phase_summary: Vec<String> = result
+                        .phases
+                        .iter()
+                        .filter(|p| !p.success)
+                        .map(|p| format!("{:?} failed", p.phase))
+                        .collect();
+                    let reason = if phase_summary.is_empty() {
+                        "build did not complete".to_string()
+                    } else {
+                        format!("phases failed: {}", phase_summary.join(", "))
+                    };
+                    warn!(package = %mrna.name, reason = %reason, "build did not complete");
                     report.failed += 1;
-                    report.failures.push(format!("{}: build failed", spec));
+                    report.failures.push(format!("{}: {}", spec, reason));
                     if !continue_on_error {
                         return Err(CoreError::BuildFailed {
                             package: spec.name.clone(),

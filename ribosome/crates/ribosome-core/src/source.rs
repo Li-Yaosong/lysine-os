@@ -205,48 +205,59 @@ pub fn extract_source(mrna: &MrnaFile, store: &VacuoleStore, src_dir: &Path) -> 
         return Ok(());
     }
 
-    let source = match mrna.sources.iter().find(|s| s.hash.is_some()) {
-        Some(s) => s,
-        None => {
-            debug!(package = %mrna.name, "no source with hash, skipping extraction");
-            return Ok(());
+    let sources_with_hash: Vec<_> = mrna.sources.iter().filter(|s| s.hash.is_some()).collect();
+
+    if sources_with_hash.is_empty() {
+        debug!(package = %mrna.name, "no source with hash, skipping extraction");
+        return Ok(());
+    }
+
+    // First source: extract normally with hoisting into src_dir
+    // Subsequent sources: extract without hoisting into src_dir (for in-tree deps like GMP/MPFR)
+    for (i, source) in sources_with_hash.iter().enumerate() {
+        let filename = url_filename(&source.url);
+
+        let digest = store
+            .resolve_source_ref(&filename)
+            .map_err(|e| CoreError::io(&filename, format!("resolve source ref: {e}")))?;
+
+        let digest = match digest {
+            Some(d) => d,
+            None => {
+                return Err(CoreError::BuildFailed {
+                    package: mrna.name.clone(),
+                    reason: format!("source '{filename}' not in CAS — run 'ribosome fetch' first"),
+                });
+            }
+        };
+
+        let handle = store
+            .get(&digest)
+            .map_err(|e| CoreError::io(&filename, format!("CAS get: {e}")))?;
+
+        let handle = match handle {
+            Some(h) => h,
+            None => {
+                return Err(CoreError::BuildFailed {
+                    package: mrna.name.clone(),
+                    reason: format!("source '{filename}' object missing from CAS"),
+                });
+            }
+        };
+
+        let cas_path = handle.path().to_path_buf();
+
+        if i == 0 {
+            info!(package = %mrna.name, file = %filename, "extracting primary source to {}", src_dir.display());
+            std::fs::create_dir_all(src_dir).map_err(|e| CoreError::io(src_dir, e.to_string()))?;
+            extract_tarball(&cas_path, src_dir, &filename)?;
+        } else {
+            // Additional sources: extract into src_dir without hoisting,
+            // so they become subdirectories (e.g. src_dir/gmp-6.3.0/)
+            info!(package = %mrna.name, file = %filename, "extracting additional source into {}", src_dir.display());
+            extract_tarball(&cas_path, src_dir, &filename)?;
         }
-    };
-
-    let filename = url_filename(&source.url);
-
-    let digest = store
-        .resolve_source_ref(&filename)
-        .map_err(|e| CoreError::io(&filename, format!("resolve source ref: {e}")))?;
-
-    let digest = match digest {
-        Some(d) => d,
-        None => {
-            return Err(CoreError::BuildFailed {
-                package: mrna.name.clone(),
-                reason: format!("source '{filename}' not in CAS — run 'ribosome fetch' first"),
-            });
-        }
-    };
-
-    let handle = store
-        .get(&digest)
-        .map_err(|e| CoreError::io(&filename, format!("CAS get: {e}")))?;
-
-    let handle = match handle {
-        Some(h) => h,
-        None => {
-            warn!(package = %mrna.name, file = %filename, "source object missing from CAS");
-            return Ok(());
-        }
-    };
-
-    let cas_path = handle.path().to_path_buf();
-    info!(package = %mrna.name, file = %filename, "extracting source to {}", src_dir.display());
-
-    std::fs::create_dir_all(src_dir).map_err(|e| CoreError::io(src_dir, e.to_string()))?;
-
-    extract_tarball(&cas_path, src_dir, &filename)?;
+    }
 
     Ok(())
 }

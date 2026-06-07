@@ -745,7 +745,8 @@ fn cmd_bootstrap(
     };
 
     if let Some(phase_str) = phase {
-        let phase = phase_str.parse::<BootstrapPhase>()
+        let phase = phase_str
+            .parse::<BootstrapPhase>()
             .map_err(|e| anyhow::anyhow!(e))?;
 
         println!("=== Bootstrap Phase: {phase} ===");

@@ -1,6 +1,6 @@
 api-version: 1
 name: cross-glibc
-version: 2.39.4
+version: 2.39
 release: 1
 
 description: GNU C Library (cross-compile stage for LFS bootstrap)
@@ -8,8 +8,8 @@ homepage: https://www.gnu.org/software/libc/
 license: GPL-2.0-or-later AND LGPL-2.1-or-later
 
 sources:
-  - url: https://ftp.gnu.org/gnu/glibc/glibc-2.39.4.tar.xz
-    hash: sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  - url: https://ftp.gnu.org/gnu/glibc/glibc-2.39.tar.xz
+    hash: sha256:f77bd47cf8170c57365ae7bf86696c118adb3b120d3259c64c502d3dc1e2d926
 
 build:
   prepare: |

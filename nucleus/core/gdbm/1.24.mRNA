@@ -9,8 +9,8 @@ depends:
   runtime:
     - glibc
 sources:
-  - url: https://ftp.gnu.org/gnu/gdbm/gdbm-1.24.tar.xz
-    hash: sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  - url: https://ftp.gnu.org/gnu/gdbm/gdbm-1.24.tar.gz
+    hash: sha256:695e9827fdf763513f133910bc7e6cfdb9187943a4fec943e57449723d2b8dbf
 build:
   prepare: |
     ./configure --prefix=/usr --enable-libgdbm-compat

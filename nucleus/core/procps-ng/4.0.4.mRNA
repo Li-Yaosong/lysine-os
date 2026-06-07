@@ -10,8 +10,8 @@ depends:
     - glibc
     - ncurses
 sources:
-  - url: https://sourceforge.net/projects/procps-ng/files/Production/procps-ng-4.0.4.tar.xz
-    hash: sha256:22870d6feb2478adb617ce4f09a787addaf2d260c5a8aa7b17d889a962c5e42e
+  - url: https://gitlab.com/procps-ng/procps/-/archive/v4.0.4/procps-v4.0.4.tar.gz
+    hash: sha256:3214fab0f817d169f2c117842ba635bafb1cd6090273e311a8b5c6fc393ddb9d
 build:
   prepare: |
     ./configure --prefix=/usr --disable-static

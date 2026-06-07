@@ -18,6 +18,14 @@ ribosome-store = { path = "../ribosome-store" }
 serde = { workspace = true }
 serde_yaml = { workspace = true }
 sha2 = { workspace = true }
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"] }
+url = "2"
+flate2 = "1"
+xz2 = "0.1"
+bzip2 = "0.4"
+tar = { workspace = true }
+zstd = { workspace = true }
+walkdir = { workspace = true }
 
 [dev-dependencies]
 tempfile = "3.14"

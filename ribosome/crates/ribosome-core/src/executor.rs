@@ -1,7 +1,7 @@
 use std::io::Write;
 use std::process::Command;
 
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 
 use ribosome_sandbox::{SandboxConfig, SandboxHandle};
 
@@ -46,6 +46,11 @@ impl BuildExecutor {
             ctx.create_dirs()?;
             None
         };
+
+        // Extract source tarball from CAS to SRCDIR (if available)
+        if let Err(e) = Self::extract_sources(ctx) {
+            warn!(error = %e, "source extraction failed or skipped");
+        }
 
         // Defensive: reject mRNA without build block (should have been caught by parser)
         if ctx.mrna.build.is_none() {
@@ -306,6 +311,19 @@ impl BuildExecutor {
 
         let log_output = format!("{}{}", output.stdout, output.stderr);
         Ok((output.success, log_output))
+    }
+
+    /// Extract source tarballs from CAS to SRCDIR.
+    fn extract_sources(ctx: &BuildContext) -> Result<()> {
+        let vacuole_path = ctx.config.cache_dir.join("vacuole");
+        if !vacuole_path.exists() {
+            debug!("no vacuole cache found, skipping source extraction");
+            return Ok(());
+        }
+        let store = ribosome_store::VacuoleStore::open(&vacuole_path).map_err(|e| {
+            CoreError::io(&vacuole_path, format!("failed to open vacuole store: {e}"))
+        })?;
+        crate::source::extract_source(&ctx.mrna, &store, &ctx.src_dir())
     }
 
     /// Build a SandboxConfig with environment variables pointing to sandbox-internal paths.

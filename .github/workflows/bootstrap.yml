@@ -1,0 +1,422 @@
+name: Bootstrap
+
+on:
+  push:
+    branches: [main, staging, 'phase/*']
+    paths:
+      - 'ribosome/**'
+      - 'nucleus/**'
+      - 'configs/versions.lock'
+      - '.github/workflows/bootstrap.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'ribosome/**'
+      - 'nucleus/**'
+      - 'configs/versions.lock'
+      - '.github/workflows/bootstrap.yml'
+  workflow_dispatch:
+    inputs:
+      phase:
+        description: 'Phase to run (fetch | cross-toolchain | temp-tools | base-system | kernel | all)'
+        required: false
+        default: 'all'
+        type: choice
+        options:
+          - fetch
+          - cross-toolchain
+          - temp-tools
+          - base-system
+          - kernel
+          - all
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_VERSION: "1.90"
+  BOOTSTRAP_BASE: /var/ribosome/bootstrap
+
+jobs:
+  # -------------------------------------------------------
+  # Job 1: Fetch all source tarballs
+  # -------------------------------------------------------
+  fetch:
+    name: Fetch Sources
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name != 'workflow_dispatch' ||
+      inputs.phase == 'all' ||
+      inputs.phase == 'fetch' ||
+      inputs.phase == 'cross-toolchain' ||
+      inputs.phase == 'temp-tools' ||
+      inputs.phase == 'base-system' ||
+      inputs.phase == 'kernel'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ribosome/target
+          key: bootstrap-cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            bootstrap-cargo-${{ runner.os }}-
+
+      - name: Build ribosome (release)
+        working-directory: ribosome
+        run: cargo build --release --bin ribosome-cli
+
+      - name: Setup bootstrap directories
+        run: |
+          sudo mkdir -p ${{ env.BOOTSTRAP_BASE }}/{build,cache,tools,sysroot}
+          sudo chown -R $USER:$USER ${{ env.BOOTSTRAP_BASE }}
+
+      - name: Cache vacuole (source tarballs)
+        id: cache-vacuole
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.BOOTSTRAP_BASE }}/cache
+          key: vacuole-sources-${{ hashFiles('nucleus/**/*.mRNA') }}
+          restore-keys: |
+            vacuole-sources-
+
+      - name: Fetch all sources
+        run: |
+          ./ribosome/target/release/ribosome-cli fetch nucleus/core/ \
+            --cache-dir ${{ env.BOOTSTRAP_BASE }}/cache
+
+      - name: Upload fetch log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fetch-log
+          path: ${{ env.BOOTSTRAP_BASE }}/cache/
+          retention-days: 7
+
+  # -------------------------------------------------------
+  # Job 2: Cross-toolchain (LFS Chapter 5)
+  # -------------------------------------------------------
+  cross-toolchain:
+    name: Phase: cross-toolchain
+    needs: fetch
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    if: |
+      github.event_name != 'workflow_dispatch' ||
+      inputs.phase == 'all' ||
+      inputs.phase == 'cross-toolchain'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential texinfo bison flex
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ribosome/target
+          key: bootstrap-cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            bootstrap-cargo-${{ runner.os }}-
+
+      - name: Build ribosome (release)
+        working-directory: ribosome
+        run: cargo build --release --bin ribosome-cli
+
+      - name: Setup bootstrap directories
+        run: |
+          sudo mkdir -p ${{ env.BOOTSTRAP_BASE }}/{build,cache,tools,sysroot}
+          sudo chown -R $USER:$USER ${{ env.BOOTSTRAP_BASE }}
+
+      - name: Restore vacuole cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.BOOTSTRAP_BASE }}/cache
+          key: vacuole-sources-${{ hashFiles('nucleus/**/*.mRNA') }}
+          fail-on-cache-miss: true
+
+      - name: Bootstrap cross-toolchain
+        run: |
+          ./ribosome/target/release/ribosome-cli bootstrap \
+            --phase cross-toolchain \
+            --nucleus-dir nucleus/core \
+            --build-root ${{ env.BOOTSTRAP_BASE }}/build \
+            --cache-dir ${{ env.BOOTSTRAP_BASE }}/cache
+
+      - name: Verify cross-toolchain artifacts
+        run: |
+          echo "=== Cross-toolchain verification ==="
+          ls -la ${{ env.BOOTSTRAP_BASE }}/tools/bin/ || true
+          echo ""
+          echo "Tool count: $(find ${{ env.BOOTSTRAP_BASE }}/tools/bin -type f 2>/dev/null | wc -l)"
+
+      - name: Upload tools artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cross-toolchain-tools
+          path: ${{ env.BOOTSTRAP_BASE }}/tools/
+          retention-days: 3
+
+  # -------------------------------------------------------
+  # Job 3: Temp-tools (LFS Chapter 6)
+  # -------------------------------------------------------
+  temp-tools:
+    name: Phase: temp-tools
+    needs: cross-toolchain
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    if: |
+      github.event_name != 'workflow_dispatch' ||
+      inputs.phase == 'all' ||
+      inputs.phase == 'temp-tools'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential texinfo bison flex
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ribosome/target
+          key: bootstrap-cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            bootstrap-cargo-${{ runner.os }}-
+
+      - name: Build ribosome (release)
+        working-directory: ribosome
+        run: cargo build --release --bin ribosome-cli
+
+      - name: Setup bootstrap directories
+        run: |
+          sudo mkdir -p ${{ env.BOOTSTRAP_BASE }}/{build,cache,tools,sysroot}
+          sudo chown -R $USER:$USER ${{ env.BOOTSTRAP_BASE }}
+
+      - name: Restore vacuole cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.BOOTSTRAP_BASE }}/cache
+          key: vacuole-sources-${{ hashFiles('nucleus/**/*.mRNA') }}
+          fail-on-cache-miss: true
+
+      - name: Download cross-toolchain artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: cross-toolchain-tools
+          path: ${{ env.BOOTSTRAP_BASE }}/tools/
+
+      - name: Bootstrap temp-tools
+        run: |
+          ./ribosome/target/release/ribosome-cli bootstrap \
+            --phase temp-tools \
+            --nucleus-dir nucleus/core \
+            --build-root ${{ env.BOOTSTRAP_BASE }}/build \
+            --cache-dir ${{ env.BOOTSTRAP_BASE }}/cache
+
+      - name: Verify temp-tools artifacts
+        run: |
+          echo "=== Temp-tools verification ==="
+          ls -la ${{ env.BOOTSTRAP_BASE }}/tools/bin/ | head -30 || true
+          echo ""
+          echo "Tool count: $(find ${{ env.BOOTSTRAP_BASE }}/tools/bin -type f 2>/dev/null | wc -l)"
+
+      - name: Upload tools artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: temp-tools-tools
+          path: ${{ env.BOOTSTRAP_BASE }}/tools/
+          retention-days: 3
+
+  # -------------------------------------------------------
+  # Job 4: Base-system (LFS Chapter 7-8, no chroot)
+  # -------------------------------------------------------
+  base-system:
+    name: Phase: base-system
+    needs: temp-tools
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    if: |
+      github.event_name != 'workflow_dispatch' ||
+      inputs.phase == 'all' ||
+      inputs.phase == 'base-system'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential texinfo bison flex
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ribosome/target
+          key: bootstrap-cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            bootstrap-cargo-${{ runner.os }}-
+
+      - name: Build ribosome (release)
+        working-directory: ribosome
+        run: cargo build --release --bin ribosome-cli
+
+      - name: Setup bootstrap directories
+        run: |
+          sudo mkdir -p ${{ env.BOOTSTRAP_BASE }}/{build,cache,tools,sysroot}
+          sudo chown -R $USER:$USER ${{ env.BOOTSTRAP_BASE }}
+
+      - name: Restore vacuole cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.BOOTSTRAP_BASE }}/cache
+          key: vacuole-sources-${{ hashFiles('nucleus/**/*.mRNA') }}
+          fail-on-cache-miss: true
+
+      - name: Download temp-tools artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: temp-tools-tools
+          path: ${{ env.BOOTSTRAP_BASE }}/tools/
+
+      - name: Bootstrap base-system
+        run: |
+          ./ribosome/target/release/ribosome-cli bootstrap \
+            --phase base-system \
+            --nucleus-dir nucleus/core \
+            --build-root ${{ env.BOOTSTRAP_BASE }}/build \
+            --cache-dir ${{ env.BOOTSTRAP_BASE }}/cache \
+            --continue-on-error
+
+      - name: Verify sysroot artifacts
+        if: always()
+        run: |
+          echo "=== Sysroot verification ==="
+          ls -la ${{ env.BOOTSTRAP_BASE }}/sysroot/ || true
+          echo ""
+          echo "=== Key files check ==="
+          for f in usr/bin/bash usr/bin/coreutils usr/lib/libc.so usr/bin/systemd; do
+            if [[ -e ${{ env.BOOTSTRAP_BASE }}/sysroot/$f ]]; then
+              echo "  [OK] /$f"
+            else
+              echo "  [MISSING] /$f"
+            fi
+          done
+
+      - name: Upload sysroot artifact (key files only)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sysroot-key-files
+          path: |
+            ${{ env.BOOTSTRAP_BASE }}/sysroot/usr/bin/
+            ${{ env.BOOTSTRAP_BASE }}/sysroot/usr/lib/
+            ${{ env.BOOTSTRAP_BASE }}/sysroot/etc/
+          retention-days: 3
+
+  # -------------------------------------------------------
+  # Job 5: Kernel
+  # -------------------------------------------------------
+  kernel:
+    name: Phase: kernel
+    needs: base-system
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    if: |
+      github.event_name != 'workflow_dispatch' ||
+      inputs.phase == 'all' ||
+      inputs.phase == 'kernel'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential texinfo bison flex libelf-dev
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ribosome/target
+          key: bootstrap-cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            bootstrap-cargo-${{ runner.os }}-
+
+      - name: Build ribosome (release)
+        working-directory: ribosome
+        run: cargo build --release --bin ribosome-cli
+
+      - name: Setup bootstrap directories
+        run: |
+          sudo mkdir -p ${{ env.BOOTSTRAP_BASE }}/{build,cache,tools,sysroot}
+          sudo chown -R $USER:$USER ${{ env.BOOTSTRAP_BASE }}
+
+      - name: Restore vacuole cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.BOOTSTRAP_BASE }}/cache
+          key: vacuole-sources-${{ hashFiles('nucleus/**/*.mRNA') }}
+          fail-on-cache-miss: true
+
+      - name: Download temp-tools artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: temp-tools-tools
+          path: ${{ env.BOOTSTRAP_BASE }}/tools/
+
+      - name: Bootstrap kernel
+        run: |
+          ./ribosome/target/release/ribosome-cli bootstrap \
+            --phase kernel \
+            --nucleus-dir nucleus/core \
+            --build-root ${{ env.BOOTSTRAP_BASE }}/build \
+            --cache-dir ${{ env.BOOTSTRAP_BASE }}/cache
+
+      - name: Verify kernel image
+        run: |
+          echo "=== Kernel image verification ==="
+          find ${{ env.BOOTSTRAP_BASE }}/build/linux-kernel-* -name "vmlinuz*" -o -name "bzImage" 2>/dev/null || true
+          find ${{ env.BOOTSTRAP_BASE }}/sysroot/boot -name "vmlinuz*" 2>/dev/null || true

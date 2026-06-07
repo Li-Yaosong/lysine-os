@@ -24,6 +24,7 @@ vacuole/
 
 # Temporary build files
 /tmp/
+/build/
 *.tmp
 *.log
 

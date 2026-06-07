@@ -83,9 +83,10 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ env.BOOTSTRAP_BASE }}/cache
-          key: vacuole-sources-${{ hashFiles('nucleus/**/*.mRNA') }}
+          key: vacuole-sources-v2-${{ hashFiles('nucleus/**/*.mRNA') }}-${{ hashFiles('ribosome/**/Cargo.lock') }}
           restore-keys: |
-            vacuole-sources-
+            vacuole-sources-v2-${{ hashFiles('nucleus/**/*.mRNA') }}-
+            vacuole-sources-v2-
 
       - name: Fetch all sources
         env:
@@ -151,7 +152,10 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ env.BOOTSTRAP_BASE }}/cache
-          key: vacuole-sources-${{ hashFiles('nucleus/**/*.mRNA') }}
+          key: vacuole-sources-v2-${{ hashFiles('nucleus/**/*.mRNA') }}-${{ hashFiles('ribosome/**/Cargo.lock') }}
+          restore-keys: |
+            vacuole-sources-v2-${{ hashFiles('nucleus/**/*.mRNA') }}-
+            vacuole-sources-v2-
           fail-on-cache-miss: true
 
       - name: Bootstrap cross-toolchain
@@ -226,7 +230,10 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ env.BOOTSTRAP_BASE }}/cache
-          key: vacuole-sources-${{ hashFiles('nucleus/**/*.mRNA') }}
+          key: vacuole-sources-v2-${{ hashFiles('nucleus/**/*.mRNA') }}-${{ hashFiles('ribosome/**/Cargo.lock') }}
+          restore-keys: |
+            vacuole-sources-v2-${{ hashFiles('nucleus/**/*.mRNA') }}-
+            vacuole-sources-v2-
           fail-on-cache-miss: true
 
       - name: Download cross-toolchain artifact
@@ -307,7 +314,10 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ env.BOOTSTRAP_BASE }}/cache
-          key: vacuole-sources-${{ hashFiles('nucleus/**/*.mRNA') }}
+          key: vacuole-sources-v2-${{ hashFiles('nucleus/**/*.mRNA') }}-${{ hashFiles('ribosome/**/Cargo.lock') }}
+          restore-keys: |
+            vacuole-sources-v2-${{ hashFiles('nucleus/**/*.mRNA') }}-
+            vacuole-sources-v2-
           fail-on-cache-miss: true
 
       - name: Download temp-tools artifact
@@ -400,7 +410,10 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ env.BOOTSTRAP_BASE }}/cache
-          key: vacuole-sources-${{ hashFiles('nucleus/**/*.mRNA') }}
+          key: vacuole-sources-v2-${{ hashFiles('nucleus/**/*.mRNA') }}-${{ hashFiles('ribosome/**/Cargo.lock') }}
+          restore-keys: |
+            vacuole-sources-v2-${{ hashFiles('nucleus/**/*.mRNA') }}-
+            vacuole-sources-v2-
           fail-on-cache-miss: true
 
       - name: Download temp-tools artifact

@@ -84,7 +84,7 @@ pub fn fetch_sources(mrna: &MrnaFile, store: &VacuoleStore) -> Result<FetchRepor
             .unwrap_or(None)
             .is_some()
         {
-            debug!(package = %mrna.name, file = %filename, "source already cached");
+            info!(package = %mrna.name, file = %filename, "source already cached, skipping");
             report.fetched += 1;
             continue;
         }
@@ -287,7 +287,13 @@ pub fn resolve_source(
 // Internal helpers
 // ---------------------------------------------------------------------------
 
+/// Maximum number of download retries per URL.
+const MAX_DOWNLOAD_RETRIES: u32 = 3;
+
 /// Download a file from URL and verify its SHA-256 hash.
+///
+/// Retries up to `MAX_DOWNLOAD_RETRIES` times on transient network errors
+/// (connection reset, timeout, partial body read) before giving up.
 fn download_and_verify(
     url: &str,
     expected_hash: &str,
@@ -305,20 +311,59 @@ fn download_and_verify(
         });
     }
 
-    let response = reqwest::blocking::Client::builder()
-        .timeout(std::time::Duration::from_secs(300))
+    let client = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(600))
         .user_agent("ribosome/0.1.0 (LysineOS build system)")
         .build()
         .map_err(|e| DownloadError {
             url: url.to_string(),
             reason: format!("HTTP client creation failed: {e}"),
-        })?
-        .get(url)
-        .send()
-        .map_err(|e| DownloadError {
-            url: url.to_string(),
-            reason: format!("HTTP request failed: {e}"),
         })?;
+
+    let mut last_err: Option<DownloadError> = None;
+
+    for attempt in 0..=MAX_DOWNLOAD_RETRIES {
+        if attempt > 0 {
+            let delay = std::time::Duration::from_secs(2u64.pow(attempt - 1));
+            warn!(url = %url, attempt, "retrying download after {:?}", delay);
+            std::thread::sleep(delay);
+        }
+
+        match try_download(&client, url, expected_hex) {
+            Ok(data) => return Ok(data),
+            Err(e) => {
+                let is_transient = e.reason.contains("error decoding response body")
+                    || e.reason.contains("error sending request")
+                    || e.reason.contains("timed out")
+                    || e.reason.contains("connection reset")
+                    || e.reason.contains("broken pipe");
+
+                if is_transient && attempt < MAX_DOWNLOAD_RETRIES {
+                    warn!(url = %url, attempt, error = %e.reason, "download failed, will retry");
+                    last_err = Some(e);
+                    continue;
+                }
+                return Err(e);
+            }
+        }
+    }
+
+    Err(last_err.unwrap_or_else(|| DownloadError {
+        url: url.to_string(),
+        reason: "all retries exhausted".to_string(),
+    }))
+}
+
+/// Single download attempt: GET url, read body, verify hash.
+fn try_download(
+    client: &reqwest::blocking::Client,
+    url: &str,
+    expected_hex: &str,
+) -> std::result::Result<Vec<u8>, DownloadError> {
+    let response = client.get(url).send().map_err(|e| DownloadError {
+        url: url.to_string(),
+        reason: format!("HTTP request failed: {e}"),
+    })?;
 
     if !response.status().is_success() {
         return Err(DownloadError {

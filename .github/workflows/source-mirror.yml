@@ -77,7 +77,10 @@ jobs:
           echo "Total files: $(ls /tmp/mirror-sources | wc -l)"
 
       - name: List downloaded files
-        run: ls -lhS /tmp/mirror-sources/ | head -30 && echo "..." && echo "Total: $(ls /tmp/mirror-sources | wc -l) files"
+        run: |
+          ls -lhS /tmp/mirror-sources/ | head -30
+          echo "..."
+          echo "Total: $(ls /tmp/mirror-sources | wc -l) files"
 
       - name: Ensure release exists
         run: |

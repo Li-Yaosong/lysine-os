@@ -64,7 +64,13 @@ pub fn bootstrap_phase(
         cache_dir.to_path_buf()
     };
 
-    let build_profile = profile::profile_for_phase(phase);
+    // Derive the bootstrap base directory from cache_dir (cache_dir = base/cache)
+    let bootstrap_base = cache_dir
+        .parent()
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|| cache_dir.clone());
+
+    let build_profile = profile::profile_for_phase(phase, &bootstrap_base);
     let package_specs = profile::packages_for_phase(phase);
 
     info!(
@@ -141,6 +147,14 @@ pub fn bootstrap_phase(
         config.ldflags = build_profile.ldflags.clone();
         config.cache_dir = cache_dir.to_path_buf();
 
+        // For cross-toolchain, temp-tools, kernel: install directly into dest_root
+        // (e.g. --prefix=/tools + DESTDIR=bootstrap/tools → bootstrap/tools/bin/ld)
+        // For base-system: use default pkg/ DESTDIR, then install_to_dest merges into sysroot
+        let use_direct_install = phase != BootstrapPhase::BaseSystem;
+        if use_direct_install {
+            config.destdir_override = Some(build_profile.dest_root.clone());
+        }
+
         let ctx = BuildContext::new(mrna.clone(), config);
 
         // Extract source if CAS is available — this is a hard requirement
@@ -162,10 +176,13 @@ pub fn bootstrap_phase(
                         "package built successfully"
                     );
 
-                    // Merge install tree into the phase's dest_root.
-                    // e.g. pkg/tools/bin/ld → bootstrap/tools/bin/ld
-                    if let Err(e) = install_to_dest(&result.dest_dir, &build_profile.dest_root) {
-                        warn!(package = %mrna.name, error = %e, "install to dest_root failed");
+                    // Base-system: merge pkg/ into dest_root (sysroot)
+                    // Other phases: already installed directly via destdir_override
+                    if !use_direct_install {
+                        if let Err(e) = install_to_dest(&result.dest_dir, &build_profile.dest_root)
+                        {
+                            warn!(package = %mrna.name, error = %e, "install to dest_root failed");
+                        }
                     }
 
                     report.succeeded += 1;

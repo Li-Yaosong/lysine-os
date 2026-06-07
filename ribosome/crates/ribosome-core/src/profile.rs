@@ -3,7 +3,7 @@
 //! Each profile defines the environment variables, prefix paths, and compiler
 //! flags appropriate for a specific LFS build phase.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// Build profile: defines the build environment for a specific LFS phase.
 #[derive(Debug, Clone)]
@@ -115,13 +115,14 @@ pub const LFS_TARGET: &str = "x86_64-lysine-linux-gnu";
 pub const BOOTSTRAP_BASE: &str = "/var/ribosome/bootstrap";
 
 /// Create a build profile for the given phase.
-pub fn profile_for_phase(phase: BootstrapPhase) -> BuildProfile {
-    let base = PathBuf::from(BOOTSTRAP_BASE);
-
+///
+/// `base` is the bootstrap root directory (e.g. `/var/ribosome/bootstrap`
+/// or a user-supplied local path). `dest_root` is derived from it.
+pub fn profile_for_phase(phase: BootstrapPhase, base: &Path) -> BuildProfile {
     match phase {
         BootstrapPhase::CrossToolchain => BuildProfile {
             name: "cross-toolchain".to_string(),
-            prefix: "/".to_string(),
+            prefix: "/tools".to_string(),
             dest_root: base.join("tools"),
             cflags: String::new(),
             cxxflags: String::new(),
@@ -134,7 +135,7 @@ pub fn profile_for_phase(phase: BootstrapPhase) -> BuildProfile {
         },
         BootstrapPhase::TempTools => BuildProfile {
             name: "temp-tools".to_string(),
-            prefix: "/".to_string(),
+            prefix: "/tools".to_string(),
             dest_root: base.join("tools"),
             cflags: String::new(),
             cxxflags: String::new(),
@@ -263,14 +264,14 @@ mod tests {
 
     #[test]
     fn cross_toolchain_profile_has_tools_prefix() {
-        let profile = profile_for_phase(BootstrapPhase::CrossToolchain);
-        assert_eq!(profile.prefix, "/");
+        let profile = profile_for_phase(BootstrapPhase::CrossToolchain, Path::new("/tmp/test"));
+        assert_eq!(profile.prefix, "/tools");
         assert!(profile.cross_target.is_some());
     }
 
     #[test]
     fn base_system_profile_has_usr_prefix() {
-        let profile = profile_for_phase(BootstrapPhase::BaseSystem);
+        let profile = profile_for_phase(BootstrapPhase::BaseSystem, Path::new("/tmp/test"));
         assert_eq!(profile.prefix, "/usr");
         assert!(!profile.cflags.is_empty());
     }

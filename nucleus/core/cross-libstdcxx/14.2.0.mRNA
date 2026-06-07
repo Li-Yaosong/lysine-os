@@ -13,7 +13,7 @@ sources:
 
 build:
   prepare: |
-    $SRCDIR/libstdc++-v3/configure --prefix=/ \
+    $SRCDIR/libstdc++-v3/configure --prefix=/tools \
       --host=x86_64-lysine-linux-gnu \
       --disable-multilib \
       --disable-nls \

@@ -1,0 +1,143 @@
+name: Mirror Sync
+
+on:
+  workflow_dispatch:
+    inputs:
+      overwrite:
+        description: 'Overwrite existing assets'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_VERSION: "1.90"
+  RELEASE_TAG: sources
+  MIRROR_REPO: Li-Yaosong/lysine-mirror
+
+jobs:
+  sync:
+    name: Download & Publish Sources
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+
+      - name: Build ribosome (release)
+        working-directory: ribosome
+        run: cargo build --release --bin ribosome-cli
+
+      - name: Create download directory
+        run: mkdir -p /tmp/mirror-sources
+
+      - name: Download all source tarballs
+        run: |
+          set +e
+          URLs=$(grep -rh 'url:' nucleus/core/ --include='*.mRNA' \
+            | sed 's/^[[:space:]]*url:[[:space:]]*//' | sed 's/[[:space:]]*$//' | sort -u)
+
+          total=$(echo "$URLs" | wc -l)
+          downloaded=0
+          failed=0
+
+          echo "Downloading $total source tarballs..."
+
+          while IFS= read -r url; do
+            [[ -z "$url" ]] && continue
+            fname=$(basename "$(echo "$url" | sed 's/?.*//')")
+            target="/tmp/mirror-sources/$fname"
+
+            [[ -f "$target" ]] && continue
+
+            printf "  [%d/%d] %-50s ... " "$((downloaded + failed + 1))" "$total" "$fname"
+
+            if curl -fsSL --connect-timeout 30 --max-time 600 --retry 3 --retry-delay 5 \
+                -o "$target" "$url" 2>/dev/null; then
+              echo "OK ($(du -h "$target" | cut -f1))"
+              ((downloaded++)) || true
+            else
+              rm -f "$target"
+              echo "FAILED"
+              ((failed++)) || true
+            fi
+          done <<< "$URLs"
+
+          echo ""
+          echo "Download complete: $downloaded OK, $failed failed"
+          echo "Total files: $(ls /tmp/mirror-sources | wc -l)"
+
+      - name: List downloaded files
+        run: ls -lhS /tmp/mirror-sources/ | head -30 && echo "..." && echo "Total: $(ls /tmp/mirror-sources | wc -l) files"
+
+      - name: Ensure release exists
+        run: |
+          if ! gh release view ${{ env.RELEASE_TAG }} --repo ${{ env.MIRROR_REPO }} 2>/dev/null; then
+            echo "Creating release '${{ env.RELEASE_TAG }}' in ${{ env.MIRROR_REPO }}..."
+            gh release create ${{ env.RELEASE_TAG }} \
+              --repo ${{ env.MIRROR_REPO }} \
+              --title "Source Tarballs" \
+              --notes "Auto-synced source tarballs for LysineOS ribosome bootstrap."
+          else
+            echo "Release '${{ env.RELEASE_TAG }}' already exists in ${{ env.MIRROR_REPO }}"
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.MIRROR_PAT }}
+
+      - name: Upload to release
+        run: |
+          cd /tmp/mirror-sources
+          overwrite_flag=""
+          if [[ "${{ inputs.overwrite }}" == "true" ]]; then
+            overwrite_flag="--clobber"
+          fi
+
+          existing=$(gh release view ${{ env.RELEASE_TAG }} --repo ${{ env.MIRROR_REPO }} \
+            --json assets -q ".assets[].name" 2>/dev/null || true)
+
+          echo "Uploading $(ls | wc -l) files to ${{ env.MIRROR_REPO }} release '${{ env.RELEASE_TAG }}'..."
+          uploaded=0
+          skipped=0
+
+          for f in *; do
+            [[ ! -f "$f" ]] && continue
+            if echo "$existing" | grep -q "^${f}$" && [[ "${{ inputs.overwrite }}" != "true" ]]; then
+              ((skipped++)) || true
+              continue
+            fi
+            echo -n "  [UPLOAD] $f ($(du -h "$f" | cut -f1)) ... "
+            if gh release upload ${{ env.RELEASE_TAG }} "$f" \
+                --repo ${{ env.MIRROR_REPO }} $overwrite_flag 2>/dev/null; then
+              echo "OK"
+              ((uploaded++)) || true
+            else
+              echo "FAILED"
+            fi
+          done
+
+          echo ""
+          echo "Upload complete: $uploaded uploaded, $skipped existing"
+        env:
+          GH_TOKEN: ${{ secrets.MIRROR_PAT }}
+
+      - name: Print mirror info
+        run: |
+          echo ""
+          echo "=============================================="
+          echo "  Mirror is ready!"
+          echo ""
+          echo "  Mirror URL:"
+          echo "  https://github.com/${{ env.MIRROR_REPO }}/releases/download/${{ env.RELEASE_TAG }}"
+          echo ""
+          echo "  Set this secret in lysine-os repo settings:"
+          echo "  RIBOSOME_MIRROR = https://github.com/${{ env.MIRROR_REPO }}/releases/download/${{ env.RELEASE_TAG }}"
+          echo "=============================================="

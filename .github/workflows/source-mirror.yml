@@ -46,13 +46,16 @@ jobs:
           URLs=$(grep -rh 'url:' nucleus/core/ --include='*.mRNA' \
             | sed 's/^[[:space:]]*url:[[:space:]]*//' | sed 's/[[:space:]]*$//' | sort -u)
 
+          echo "URLs found:"
+          echo "$URLs" | head -5
+          echo "..."
           total=$(echo "$URLs" | wc -l)
           downloaded=0
           failed=0
 
           echo "Downloading $total source tarballs..."
 
-          while IFS= read -r url; do
+          echo "$URLs" | while IFS= read -r url; do
             [[ -z "$url" ]] && continue
             fname=$(basename "$(echo "$url" | sed 's/?.*//')")
             target="/tmp/mirror-sources/$fname"
@@ -62,15 +65,15 @@ jobs:
             printf "  [%d/%d] %-50s ... " "$((downloaded + failed + 1))" "$total" "$fname"
 
             if curl -fsSL --connect-timeout 30 --max-time 600 --retry 3 --retry-delay 5 \
-                -o "$target" "$url" 2>/dev/null; then
+                -o "$target" "$url"; then
               echo "OK ($(du -h "$target" | cut -f1))"
-              ((downloaded++)) || true
+              downloaded=$((downloaded + 1))
             else
               rm -f "$target"
-              echo "FAILED"
-              ((failed++)) || true
+              echo "FAILED (curl exit: $?)"
+              failed=$((failed + 1))
             fi
-          done <<< "$URLs"
+          done
 
           echo ""
           echo "Download complete: $downloaded OK, $failed failed"

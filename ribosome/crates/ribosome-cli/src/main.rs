@@ -3,6 +3,7 @@ use std::process::ExitCode;
 
 use anyhow::{bail, Context, Result};
 use clap::Parser;
+use ribosome_core::{BootstrapPhase, MrnaIndex, PackageSpec};
 use ribosome_deps::DependencyGraph;
 use ribosome_parser::{collect_validation_issues, parse_mrna_file, Severity, ValidationIssue};
 use ribosome_sandbox::{SandboxConfig, SandboxHandle};
@@ -21,11 +22,17 @@ struct Cli {
 enum Commands {
     /// Build a package from mRNA
     Build {
-        /// Path to the .mRNA file to build
+        /// Path to the .mRNA file to build, or directory for --all mode
         package: PathBuf,
         /// Build root directory (default: ./build)
         #[arg(long, default_value = "./build")]
         build_root: PathBuf,
+        /// Build all mRNA files in the directory (package must be a directory)
+        #[arg(long)]
+        all: bool,
+        /// Continue building remaining packages even if one fails (--all mode only)
+        #[arg(long)]
+        continue_on_error: bool,
         /// Number of parallel jobs (default: auto-detect)
         #[arg(long)]
         jobs: Option<usize>,
@@ -56,6 +63,14 @@ enum Commands {
         /// Custom root filesystem path for the sandbox (default: host root "/")
         #[arg(long)]
         rootfs: Option<PathBuf>,
+    },
+    /// Download source tarballs declared in mRNA files
+    Fetch {
+        /// Path to a .mRNA file or directory containing .mRNA files
+        path: PathBuf,
+        /// Vacuole CAS directory for caching source tarballs
+        #[arg(long, default_value = "./build/cache/vacuole")]
+        cache_dir: PathBuf,
     },
     /// Enter build sandbox for debugging
     Shell {
@@ -89,6 +104,27 @@ enum Commands {
     Repo {
         #[command(subcommand)]
         action: RepoAction,
+    },
+    /// Bootstrap LFS system from scratch (multi-phase build)
+    Bootstrap {
+        /// LFS phase to build (omit for all phases)
+        #[arg(long)]
+        phase: Option<String>,
+        /// Path to nucleus directory containing .mRNA files
+        #[arg(long, default_value = "nucleus/core")]
+        nucleus_dir: PathBuf,
+        /// Build root directory
+        #[arg(long, default_value = "/var/ribosome/bootstrap/build")]
+        build_root: PathBuf,
+        /// Cache directory (vacuole CAS store)
+        #[arg(long, default_value = "/var/ribosome/bootstrap/cache")]
+        cache_dir: PathBuf,
+        /// Version lock file (pins exact package versions)
+        #[arg(long, default_value = "configs/versions.lock")]
+        lock_file: PathBuf,
+        /// Continue building after failures
+        #[arg(long)]
+        continue_on_error: bool,
     },
 }
 
@@ -134,6 +170,8 @@ fn run() -> Result<()> {
         Commands::Build {
             package,
             build_root,
+            all,
+            continue_on_error,
             jobs,
             sandbox,
             no_network,
@@ -144,24 +182,31 @@ fn run() -> Result<()> {
             drop_capabilities,
             syscall_filter,
             rootfs,
-        } => cmd_build(BuildArgs {
-            mrna_path: &package,
-            build_root: &build_root,
-            jobs,
-            sandbox,
-            no_network,
-            memory_limit: memory_limit.as_deref(),
-            user_namespace,
-            uid_map: uid_map.as_deref(),
-            gid_map: gid_map.as_deref(),
-            drop_capabilities: drop_capabilities.as_deref(),
-            syscall_filter: syscall_filter.as_slice(),
-            rootfs: rootfs.as_deref(),
-        }),
+        } => {
+            if all {
+                cmd_build_all(&package, &build_root, continue_on_error, jobs)
+            } else {
+                cmd_build(BuildArgs {
+                    mrna_path: &package,
+                    build_root: &build_root,
+                    jobs,
+                    sandbox,
+                    no_network,
+                    memory_limit: memory_limit.as_deref(),
+                    user_namespace,
+                    uid_map: uid_map.as_deref(),
+                    gid_map: gid_map.as_deref(),
+                    drop_capabilities: drop_capabilities.as_deref(),
+                    syscall_filter: syscall_filter.as_slice(),
+                    rootfs: rootfs.as_deref(),
+                })
+            }
+        }
         Commands::Shell {
             package,
             build_root,
         } => cmd_shell(&package, &build_root),
+        Commands::Fetch { path, cache_dir } => cmd_fetch(&path, &cache_dir),
         Commands::Check { path } => cmd_check(&path),
         Commands::Graph { path, output } => cmd_graph(path.as_deref(), output.as_deref()),
         Commands::Clean => {
@@ -173,6 +218,21 @@ fn run() -> Result<()> {
             bail!("info not implemented in Sprint 1");
         }
         Commands::Repo { action } => cmd_repo(action),
+        Commands::Bootstrap {
+            phase,
+            nucleus_dir,
+            build_root,
+            cache_dir,
+            lock_file,
+            continue_on_error,
+        } => cmd_bootstrap(
+            phase.as_deref(),
+            &nucleus_dir,
+            &build_root,
+            &cache_dir,
+            &lock_file,
+            continue_on_error,
+        ),
     }
 }
 
@@ -451,6 +511,195 @@ fn format_size(bytes: u64) -> String {
     }
 }
 
+fn cmd_build_all(
+    dir: &Path,
+    build_root: &Path,
+    continue_on_error: bool,
+    jobs: Option<usize>,
+) -> Result<()> {
+    let index = MrnaIndex::scan(dir)
+        .with_context(|| format!("scanning mRNA files from {}", dir.display()))?;
+    if index.package_count() == 0 {
+        bail!("no .mRNA files found under {}", dir.display());
+    }
+
+    // Build dependency graph
+    let mut graph = DependencyGraph::new();
+    let loaded = graph
+        .load_mrna_directory(dir)
+        .with_context(|| format!("loading mRNA from {}", dir.display()))?;
+
+    if loaded.is_empty() {
+        bail!("no valid .mRNA files found");
+    }
+
+    if graph.has_cycle() {
+        let cycle = graph.cycle_packages();
+        eprintln!("warning: cycle detected among: {}", cycle.join(", "));
+    }
+
+    let order = graph
+        .topological_sort()
+        .context("failed to compute build order")?;
+
+    println!("Build order ({} packages):", order.len());
+    for name in &order {
+        println!("  - {name}");
+    }
+
+    println!(
+        "Building {} package(s) from {}",
+        index.package_count(),
+        dir.display()
+    );
+
+    let mut succeeded = 0usize;
+    let mut failed = 0usize;
+    let mut skipped = 0usize;
+
+    for name in &order {
+        let spec = PackageSpec::name_only(name);
+        let entry = match index.resolve(&spec) {
+            Some(e) => e,
+            None => {
+                eprintln!("[SKIP] {name}: mRNA file not found");
+                skipped += 1;
+                continue;
+            }
+        };
+
+        let mrna = match parse_mrna_file(&entry.path) {
+            Ok(m) => m,
+            Err(e) => {
+                eprintln!("[FAIL] {name}: parse error: {e}");
+                failed += 1;
+                if !continue_on_error {
+                    bail!("build aborted due to parse error for {name}");
+                }
+                continue;
+            }
+        };
+
+        let label = format!("{}-{}", mrna.name, mrna.version);
+        println!(
+            "\n[{}/{}] Building {label}...",
+            succeeded + failed + 1,
+            order.len()
+        );
+
+        let mut config = ribosome_core::BuildConfig::new(build_root);
+        if let Some(j) = jobs {
+            config.jobs = j;
+        }
+
+        let ctx = ribosome_core::BuildContext::new(mrna, config);
+
+        match ribosome_core::BuildExecutor::build(&ctx) {
+            Ok(result) => {
+                if result.is_ok() {
+                    println!(
+                        "[OK] {} — {} phases, {:.1}s",
+                        result.package,
+                        result.phases.len(),
+                        result.total_duration.as_secs_f64()
+                    );
+                    if let Some(protein) = &result.protein {
+                        println!(
+                            "  protein: {} ({} files, {})",
+                            protein.path.display(),
+                            protein.file_count,
+                            &protein.sha256[..22]
+                        );
+                    }
+                    succeeded += 1;
+                } else {
+                    eprintln!("[FAIL] {label}: build did not complete successfully");
+                    failed += 1;
+                    if !continue_on_error {
+                        bail!("build aborted after failure for {label}");
+                    }
+                }
+            }
+            Err(e) => {
+                eprintln!("[FAIL] {label}: {e:#}");
+                failed += 1;
+                if !continue_on_error {
+                    bail!("build aborted after failure for {label}");
+                }
+            }
+        }
+    }
+
+    println!(
+        "\nBuild complete: {} succeeded, {} failed, {} skipped out of {}",
+        succeeded,
+        failed,
+        skipped,
+        order.len()
+    );
+
+    if failed > 0 {
+        bail!("{failed} package(s) failed to build");
+    }
+
+    Ok(())
+}
+
+fn cmd_fetch(path: &Path, cache_dir: &Path) -> Result<()> {
+    let index = MrnaIndex::scan(path)
+        .with_context(|| format!("scanning mRNA files from {}", path.display()))?;
+    if index.package_count() == 0 {
+        bail!("no .mRNA files found under {}", path.display());
+    }
+
+    // Collect the resolved (latest) mRNA for each package
+    let mut mrnas = Vec::new();
+    for name in index.package_names() {
+        let spec = PackageSpec::name_only(name);
+        if let Some(entry) = index.resolve(&spec) {
+            match parse_mrna_file(&entry.path) {
+                Ok(mrna) => mrnas.push(mrna),
+                Err(e) => {
+                    eprintln!("[WARN] Skipping {name}: {e}");
+                }
+            }
+        }
+    }
+
+    if mrnas.is_empty() {
+        bail!("no valid mRNA files found");
+    }
+
+    println!("Fetching sources for {} package(s)...", mrnas.len());
+
+    let store = ribosome_store::VacuoleStore::open(cache_dir)
+        .with_context(|| format!("failed to open vacuole store at {}", cache_dir.display()))?;
+
+    let report = ribosome_core::fetch_sources_batch(&mrnas, &store);
+
+    for (pkg, err) in &report.errors {
+        if err.url.is_empty() {
+            eprintln!("  [FAIL] {pkg}: {}", err.reason);
+        } else {
+            eprintln!("  [FAIL] {pkg}: {} ({})", err.url, err.reason);
+        }
+    }
+
+    println!(
+        "Fetch complete: {} packages, {} fetched, {} skipped, {} failed",
+        report.packages_processed,
+        report.sources_fetched,
+        report.sources_skipped,
+        report.sources_failed,
+    );
+
+    if report.sources_failed > 0 {
+        bail!("{} source(s) failed to fetch", report.sources_failed);
+    }
+
+    Ok(())
+}
+
 fn cmd_repo(action: RepoAction) -> Result<()> {
     match action {
         RepoAction::Init { path } => {
@@ -477,6 +726,101 @@ fn cmd_repo(action: RepoAction) -> Result<()> {
             let count = repo.rebuild_index()?;
             println!("Rebuilt index: {} packages in {}", count, path.display());
             Ok(())
+        }
+    }
+}
+
+fn cmd_bootstrap(
+    phase: Option<&str>,
+    nucleus_dir: &Path,
+    build_root: &Path,
+    cache_dir: &Path,
+    lock_file: &Path,
+    continue_on_error: bool,
+) -> Result<()> {
+    let lock_display = if lock_file.exists() {
+        format!("{}", lock_file.display())
+    } else {
+        "(not found, using latest versions)".to_string()
+    };
+
+    if let Some(phase_str) = phase {
+        let phase = phase_str.parse::<BootstrapPhase>()
+            .map_err(|e| anyhow::anyhow!(e))?;
+
+        println!("=== Bootstrap Phase: {phase} ===");
+        println!("  nucleus:    {}", nucleus_dir.display());
+        println!("  build root: {}", build_root.display());
+        println!("  cache:      {}", cache_dir.display());
+        println!("  lock file:  {lock_display}");
+
+        let report = ribosome_core::bootstrap_phase(
+            phase,
+            nucleus_dir,
+            build_root,
+            cache_dir,
+            Some(lock_file),
+            continue_on_error,
+        )
+        .context("bootstrap phase failed")?;
+
+        print_phase_report(&report);
+
+        if report.failed > 0 {
+            bail!(
+                "phase '{}' completed with {} failure(s)",
+                report.phase,
+                report.failed,
+            );
+        }
+
+        println!("\nPhase '{}' completed successfully!", report.phase);
+        Ok(())
+    } else {
+        println!("=== Full Bootstrap (All Phases) ===");
+        println!("  nucleus:    {}", nucleus_dir.display());
+        println!("  build root: {}", build_root.display());
+        println!("  cache:      {}", cache_dir.display());
+        println!("  lock file:  {lock_display}");
+        println!();
+
+        let report = ribosome_core::bootstrap_all(
+            nucleus_dir,
+            build_root,
+            cache_dir,
+            Some(lock_file),
+            continue_on_error,
+        )
+        .context("bootstrap failed")?;
+
+        for phase_report in &report.phases {
+            print_phase_report(phase_report);
+            println!();
+        }
+
+        println!(
+            "=== Bootstrap Complete: {} succeeded, {} failed ===",
+            report.total_succeeded, report.total_failed,
+        );
+
+        if report.total_failed > 0 {
+            bail!("{} package(s) failed during bootstrap", report.total_failed);
+        }
+
+        Ok(())
+    }
+}
+
+fn print_phase_report(report: &ribosome_core::BootstrapPhaseReport) {
+    println!(
+        "Phase '{}': {}/{} succeeded, {} failed, {} skipped",
+        report.phase, report.succeeded, report.total, report.failed, report.skipped,
+    );
+
+    if !report.failures.is_empty() {
+        println!("  Failures:");
+        for failure in &report.failures {
+            println!("    - {failure}");
         }
     }
 }

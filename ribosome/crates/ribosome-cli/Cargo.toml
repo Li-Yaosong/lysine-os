@@ -14,6 +14,7 @@ ribosome-parser = { path = "../ribosome-parser" }
 ribosome-deps = { path = "../ribosome-deps" }
 ribosome-repository = { path = "../ribosome-repository" }
 ribosome-sandbox = { path = "../ribosome-sandbox" }
+ribosome-store = { path = "../ribosome-store" }
 walkdir = { workspace = true }
 clap = { workspace = true }
 anyhow = { workspace = true }

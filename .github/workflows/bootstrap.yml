@@ -104,7 +104,7 @@ jobs:
   # Job 2: Cross-toolchain (LFS Chapter 5)
   # -------------------------------------------------------
   cross-toolchain:
-    name: Phase: cross-toolchain
+    name: "Phase: cross-toolchain"
     needs: fetch
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -179,7 +179,7 @@ jobs:
   # Job 3: Temp-tools (LFS Chapter 6)
   # -------------------------------------------------------
   temp-tools:
-    name: Phase: temp-tools
+    name: "Phase: temp-tools"
     needs: cross-toolchain
     runs-on: ubuntu-latest
     timeout-minutes: 90
@@ -260,7 +260,7 @@ jobs:
   # Job 4: Base-system (LFS Chapter 7-8, no chroot)
   # -------------------------------------------------------
   base-system:
-    name: Phase: base-system
+    name: "Phase: base-system"
     needs: temp-tools
     runs-on: ubuntu-latest
     timeout-minutes: 240
@@ -353,7 +353,7 @@ jobs:
   # Job 5: Kernel
   # -------------------------------------------------------
   kernel:
-    name: Phase: kernel
+    name: "Phase: kernel"
     needs: base-system
     runs-on: ubuntu-latest
     timeout-minutes: 60

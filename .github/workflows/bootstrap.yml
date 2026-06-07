@@ -88,6 +88,8 @@ jobs:
             vacuole-sources-
 
       - name: Fetch all sources
+        env:
+          RIBOSOME_MIRROR: ${{ secrets.RIBOSOME_MIRROR }}
         run: |
           ./ribosome/target/release/ribosome-cli fetch nucleus/core/ \
             --cache-dir ${{ env.BOOTSTRAP_BASE }}/cache

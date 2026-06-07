@@ -99,29 +99,56 @@ pub fn fetch_sources(mrna: &MrnaFile, store: &VacuoleStore) -> Result<FetchRepor
 
         info!(package = %mrna.name, url = %source.url, "downloading source");
 
-        match download_and_verify(&source.url, &expected_hash) {
-            Ok(data) => {
-                let digest = store.put_bytes(&data).map_err(|e| {
-                    CoreError::io(PathBuf::from(&filename), format!("CAS store failed: {e}"))
-                })?;
-                store.add_source_ref(&filename, &digest).map_err(|e| {
-                    CoreError::io(PathBuf::from(&filename), format!("CAS ref failed: {e}"))
-                })?;
-                info!(
-                    package = %mrna.name, file = %filename,
-                    hash = %digest.to_prefixed(), size = data.len(),
-                    "source fetched and cached"
-                );
-                report.fetched += 1;
+        // Build candidate URL list: mirror first (if configured), then original.
+        let mirror_base = std::env::var("RIBOSOME_MIRROR").ok();
+        let mut urls: Vec<String> = Vec::new();
+        if let Some(ref base) = mirror_base {
+            let mirror_url = format!("{}/{}", base.trim_end_matches('/'), filename);
+            urls.push(mirror_url);
+        }
+        urls.push(source.url.clone());
+
+        let mut last_error: Option<DownloadError> = None;
+        let mut success = false;
+
+        for url in &urls {
+            if url != &source.url {
+                info!(package = %mrna.name, mirror = %url, "trying mirror");
             }
-            Err(e) => {
-                warn!(package = %mrna.name, url = %source.url, error = %e, "source download failed");
-                report.failed += 1;
-                report.errors.push(FetchError {
-                    url: source.url.clone(),
-                    reason: e.to_string(),
-                });
+            match download_and_verify(url, &expected_hash) {
+                Ok(data) => {
+                    let digest = store.put_bytes(&data).map_err(|e| {
+                        CoreError::io(PathBuf::from(&filename), format!("CAS store failed: {e}"))
+                    })?;
+                    store.add_source_ref(&filename, &digest).map_err(|e| {
+                        CoreError::io(PathBuf::from(&filename), format!("CAS ref failed: {e}"))
+                    })?;
+                    info!(
+                        package = %mrna.name, file = %filename,
+                        hash = %digest.to_prefixed(), size = data.len(),
+                        "source fetched and cached"
+                    );
+                    report.fetched += 1;
+                    success = true;
+                    break;
+                }
+                Err(e) => {
+                    if url == &source.url {
+                        warn!(package = %mrna.name, url = %url, error = %e, "source download failed");
+                    } else {
+                        warn!(package = %mrna.name, mirror = %url, error = %e, "mirror download failed, falling back");
+                    }
+                    last_error = Some(e);
+                }
             }
+        }
+
+        if !success {
+            report.failed += 1;
+            report.errors.push(FetchError {
+                url: source.url.clone(),
+                reason: last_error.map(|e| e.to_string()).unwrap_or_default(),
+            });
         }
     }
 

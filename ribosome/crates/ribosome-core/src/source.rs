@@ -551,7 +551,7 @@ mod tests {
     #[test]
     fn url_filename_extracts_last_segment() {
         assert_eq!(
-            url_filename("https://mirrors.ustc.edu.cn/gnu/gcc/gcc-14.2.0/gcc-14.2.0.tar.xz"),
+            url_filename("https://ftp.gnu.org/gnu/gcc/gcc-14.2.0/gcc-14.2.0.tar.xz"),
             "gcc-14.2.0.tar.xz"
         );
     }

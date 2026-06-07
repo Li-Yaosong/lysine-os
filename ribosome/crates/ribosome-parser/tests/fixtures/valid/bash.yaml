@@ -10,7 +10,7 @@ depends:
 patches:
   - bash-5.2-upstream-fixes.patch
 sources:
-  - url: https://mirrors.ustc.edu.cn/gnu/bash/bash-5.2.37.tar.gz
+  - url: https://ftp.gnu.org/gnu/bash/bash-5.2.37.tar.gz
     hash: sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 build:
   install: make install

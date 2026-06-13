@@ -74,7 +74,7 @@ impl SandboxConfig {
                 BindMount::new(build_base.join("pkg"), PathBuf::from("/srv/pkg"), true),
             ],
             env_vars: Vec::new(),
-            working_dir: PathBuf::from("/srv/build"),
+            working_dir: PathBuf::from("/srv/src"),
             user_namespace: false,
             uid_map: None,
             gid_map: None,

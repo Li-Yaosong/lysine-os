@@ -466,7 +466,7 @@ impl BuildExecutor {
         transcript: &mut std::fs::File,
         progress: &dyn BuildProgress,
     ) -> Result<(bool, String)> {
-        let working_dir = ctx.build_dir();
+        let working_dir = ctx.src_dir();
         std::fs::create_dir_all(&working_dir)
             .map_err(|e| CoreError::io(&working_dir, e.to_string()))?;
 

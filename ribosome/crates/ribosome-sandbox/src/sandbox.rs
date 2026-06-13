@@ -240,7 +240,7 @@ mod tests {
         assert!(config.memory_limit.is_none());
         assert!(config.cpu_quota.is_none());
         assert_eq!(config.bind_mounts.len(), 3);
-        assert_eq!(config.working_dir, PathBuf::from("/srv/build"));
+        assert_eq!(config.working_dir, PathBuf::from("/srv/src"));
         assert!(!config.user_namespace);
         assert!(config.uid_map.is_none());
         assert!(config.gid_map.is_none());
@@ -282,7 +282,7 @@ mod tests {
         assert!(args_joined.contains("--quiet"));
 
         // Must have chdir
-        assert!(args_joined.contains("--chdir=/srv/build"));
+        assert!(args_joined.contains("--chdir=/srv/src"));
 
         // Must have bind mounts for src, build, pkg
         assert!(args_joined.contains("--bind=/tmp/test-build/src:/srv/src"));

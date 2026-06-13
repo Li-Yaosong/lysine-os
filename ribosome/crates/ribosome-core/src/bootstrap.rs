@@ -191,20 +191,28 @@ pub fn bootstrap_phase(
             continue;
         }
 
-        // Extract source if CAS is available — this is a hard requirement
+        // Extract source if CAS is available — skip if SRCDIR already populated
+        // to preserve build artifacts from previous (incremental) runs.
         if let Some(ref store) = store {
-            source::extract_source(
-                &mrna,
-                store,
-                &ctx.src_dir(),
-                Some(&|count, filename| progress.on_extract_file(count, filename)),
-            )
-            .map_err(|e| CoreError::BuildFailed {
-                package: mrna.name.clone(),
-                reason: format!("source extraction failed: {e}"),
-            })?;
+            let src_dir = ctx.src_dir();
+            let already_populated = src_dir.exists()
+                && std::fs::read_dir(&src_dir).is_ok_and(|mut d| d.next().is_some());
+            if !already_populated {
+                source::extract_source(
+                    &mrna,
+                    store,
+                    &src_dir,
+                    Some(&|count, filename| progress.on_extract_file(count, filename)),
+                )
+                .map_err(|e| CoreError::BuildFailed {
+                    package: mrna.name.clone(),
+                    reason: format!("source extraction failed: {e}"),
+                })?;
 
-            progress.extract_done(0);
+                progress.extract_done(0);
+            } else {
+                info!(package = %mrna.name, "SRCDIR already populated, skipping extraction");
+            }
         }
 
         match BuildExecutor::build(&ctx, progress) {

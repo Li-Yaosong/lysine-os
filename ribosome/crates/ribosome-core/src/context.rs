@@ -56,6 +56,14 @@ pub struct BuildConfig {
     /// of the default `<base_dir>/pkg`. Used by bootstrap to install directly
     /// into the phase's dest_root (e.g. `/var/ribosome/bootstrap/tools`).
     pub destdir_override: Option<PathBuf>,
+    /// Skip .prot packaging after build phases complete.
+    ///
+    /// Used by bootstrap when `destdir_override` points to a shared directory
+    /// (like `build/bootstrap/`) that contains files from multiple packages
+    /// and the build tree — packing it all into .prot would be enormous.
+    pub skip_pack: bool,
+    /// Force rebuild even if phase markers exist.
+    pub clean: bool,
 }
 
 impl BuildConfig {
@@ -75,6 +83,8 @@ impl BuildConfig {
             ldflags: String::new(),
             sandbox_config: None,
             destdir_override: None,
+            skip_pack: false,
+            clean: false,
         }
     }
 }
@@ -87,6 +97,7 @@ impl BuildConfig {
 /// ├── src/          # SRCDIR  - extracted source tarball
 /// ├── build/        # BUILDDIR - out-of-tree build directory
 /// ├── pkg/          # DESTDIR - staged installation root
+/// ├── .ribosome-markers/  # phase completion markers
 /// └── transcript.log
 /// ```
 pub struct BuildContext {
@@ -125,6 +136,67 @@ impl BuildContext {
 
     pub fn transcript_path(&self) -> PathBuf {
         self.base_dir.join("transcript.log")
+    }
+
+    /// Directory holding phase completion marker files.
+    fn markers_dir(&self) -> PathBuf {
+        self.base_dir.join(".ribosome-markers")
+    }
+
+    /// Path to the marker file for a specific phase.
+    pub fn phase_marker_path(&self, phase: BuildPhase) -> PathBuf {
+        self.markers_dir().join(phase.as_str())
+    }
+
+    /// Check whether a phase has already completed successfully.
+    pub fn is_phase_done(&self, phase: BuildPhase) -> bool {
+        !self.config.clean && self.phase_marker_path(phase).exists()
+    }
+
+    /// Write a marker file indicating a phase completed successfully.
+    pub fn mark_phase_done(&self, phase: BuildPhase) -> Result<()> {
+        let dir = self.markers_dir();
+        std::fs::create_dir_all(&dir).map_err(|e| CoreError::io(&dir, e.to_string()))?;
+        let marker = self.phase_marker_path(phase);
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        std::fs::write(&marker, format!("{timestamp}\n"))
+            .map_err(|e| CoreError::io(&marker, e.to_string()))?;
+        Ok(())
+    }
+
+    /// Check whether all defined build phases have completed.
+    ///
+    /// Returns `true` only when every phase that has a script in the mRNA
+    /// also has a corresponding marker file.
+    pub fn is_build_complete(&self) -> bool {
+        if self.config.clean {
+            return false;
+        }
+        let Some(ref build) = self.mrna.build else {
+            return false;
+        };
+        let phases: Vec<(BuildPhase, Option<&str>)> = vec![
+            (BuildPhase::Prepare, build.prepare.as_deref()),
+            (BuildPhase::Compile, build.compile.as_deref()),
+            (BuildPhase::Check, build.check.as_deref()),
+            (BuildPhase::Install, build.install.as_deref()),
+        ];
+        phases
+            .iter()
+            .filter(|(_, script)| script.is_some_and(|s| !s.trim().is_empty()))
+            .all(|(phase, _)| self.is_phase_done(*phase))
+    }
+
+    /// Remove all phase markers, forcing a full rebuild on the next run.
+    pub fn clean_markers(&self) -> Result<()> {
+        let dir = self.markers_dir();
+        if dir.exists() {
+            std::fs::remove_dir_all(&dir).map_err(|e| CoreError::io(&dir, e.to_string()))?;
+        }
+        Ok(())
     }
 
     /// Create the directory layout for a build.

@@ -44,7 +44,7 @@ fn create_prot_package(
         post_remove: None,
         build_duration: std::time::Duration::from_secs(1),
     };
-    pack(destdir, &meta, output_dir).unwrap()
+    pack(destdir, &meta, output_dir, None).unwrap()
 }
 
 /// Setup: create a repository with a few packages and return (root, repo_dir).

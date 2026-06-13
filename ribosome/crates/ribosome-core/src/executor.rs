@@ -1,5 +1,5 @@
-use std::io::Write;
-use std::process::Command;
+use std::io::{BufRead, Write};
+use std::process::{Command, Stdio};
 
 use tracing::{debug, info, warn};
 
@@ -7,6 +7,7 @@ use ribosome_sandbox::{SandboxConfig, SandboxHandle};
 
 use crate::context::{BuildContext, BuildPhase, BuildResult, PhaseResult};
 use crate::error::{CoreError, Result};
+use crate::progress::BuildProgress;
 
 /// Drives the four-phase build lifecycle from a parsed mRNA.
 ///
@@ -21,12 +22,20 @@ impl BuildExecutor {
     /// Run a full build for the given context.
     ///
     /// Creates the directory layout, then executes each non-empty build phase
-    /// from the mRNA in order: prepare → compile → check → install.
+    /// from the mRNA in order: prepare -> compile -> check -> install.
     /// Every phase's stdout+stderr is appended to the transcript log.
-    pub fn build(ctx: &BuildContext) -> Result<BuildResult> {
+    /// Build progress events are reported via `progress`.
+    pub fn build(ctx: &BuildContext, progress: &dyn BuildProgress) -> Result<BuildResult> {
         let start = std::time::Instant::now();
         let package = ctx.mrna.name.clone();
         let version = ctx.mrna.version.clone();
+
+        // Clean mode: remove all phase markers so every phase re-runs
+        if ctx.config.clean {
+            if let Err(e) = ctx.clean_markers() {
+                debug!(error = %e, "failed to clean markers (may not exist yet)");
+            }
+        }
 
         info!(package = %package, version = %version, "starting build");
 
@@ -48,7 +57,7 @@ impl BuildExecutor {
         };
 
         // Extract source tarball from CAS to SRCDIR (if available)
-        if let Err(e) = Self::extract_sources(ctx) {
+        if let Err(e) = Self::extract_sources(ctx, progress) {
             warn!(error = %e, "source extraction failed or skipped");
         }
 
@@ -101,9 +110,33 @@ impl BuildExecutor {
                 }
             };
 
-            let result = Self::run_phase(ctx, *phase, script, &mut transcript, sandbox.as_ref())?;
+            // Skip phase if marker exists (incremental build)
+            if ctx.is_phase_done(*phase) {
+                info!(phase = %phase, "skipped (marker exists)");
+                progress.phase_started(phase.as_str());
+                progress.phase_finished(phase.as_str(), true, std::time::Duration::ZERO);
+                phase_results.push(PhaseResult {
+                    phase: *phase,
+                    success: true,
+                    duration: std::time::Duration::ZERO,
+                    log_output: String::new(),
+                });
+                continue;
+            }
+
+            progress.phase_started(phase.as_str());
+
+            let result = Self::run_phase(
+                ctx,
+                *phase,
+                script,
+                &mut transcript,
+                sandbox.as_ref(),
+                progress,
+            )?;
             if !result.success {
                 warn!(phase = %phase, "build phase failed");
+                progress.phase_finished(phase.as_str(), false, result.duration);
                 let total = start.elapsed();
                 return Ok(BuildResult {
                     package,
@@ -116,6 +149,13 @@ impl BuildExecutor {
                     pack_error: None,
                 });
             }
+            progress.phase_finished(phase.as_str(), true, result.duration);
+
+            // Write marker on success
+            if let Err(e) = ctx.mark_phase_done(*phase) {
+                warn!(phase = %phase, error = %e, "failed to write phase marker");
+            }
+
             phase_results.push(result);
         }
 
@@ -128,18 +168,31 @@ impl BuildExecutor {
         );
 
         // Auto-pack into .prot, then store in CAS
-        let (protein, pack_error) = match Self::pack_result(ctx, &total) {
-            Ok(p) => {
-                // Store the .prot package in the vacuole CAS
-                if let Err(e) = Self::store_in_cas(ctx, &p) {
-                    warn!(error = %e, "CAS storage failed — .prot was created but not cached");
+        // Skip packing when destdir_override points to a shared directory (bootstrap mode)
+        let (protein, pack_error) = if ctx.config.skip_pack {
+            (None, None)
+        } else {
+            match Self::pack_result(ctx, &total, progress) {
+                Ok(p) => {
+                    // Store the .prot package in the vacuole CAS
+                    if let Err(e) = Self::store_in_cas(ctx, &p) {
+                        warn!(error = %e, "CAS storage failed — .prot was created but not cached");
+                    }
+                    progress.pack_done(
+                        p.file_count,
+                        p.size_bytes,
+                        &p.path
+                            .file_name()
+                            .map(|n| n.to_string_lossy().into_owned())
+                            .unwrap_or_default(),
+                    );
+                    (Some(p), None)
                 }
-                (Some(p), None)
-            }
-            Err(e) => {
-                let msg = format!("{e}");
-                warn!(error = %msg, "packing failed — build phases succeeded but .prot was not created");
-                (None, Some(msg))
+                Err(e) => {
+                    let msg = format!("{e}");
+                    warn!(error = %msg, "packing failed — build phases succeeded but .prot was not created");
+                    (None, Some(msg))
+                }
             }
         };
 
@@ -161,6 +214,7 @@ impl BuildExecutor {
     fn pack_result(
         ctx: &BuildContext,
         duration: &std::time::Duration,
+        progress: &dyn BuildProgress,
     ) -> crate::Result<super::ProteinOutput> {
         use ribosome_package::{pack, PackageMeta};
 
@@ -193,11 +247,15 @@ impl BuildExecutor {
             build_duration: *duration,
         };
 
-        let pack_result = pack(&ctx.dest_dir(), &meta, &ctx.config.cache_dir).map_err(|e| {
-            CoreError::BuildFailed {
-                package: ctx.mrna.name.clone(),
-                reason: format!("packing failed: {e}"),
-            }
+        let pack_result = pack(
+            &ctx.dest_dir(),
+            &meta,
+            &ctx.config.cache_dir,
+            Some(&|count| progress.on_pack_file(count)),
+        )
+        .map_err(|e| CoreError::BuildFailed {
+            package: ctx.mrna.name.clone(),
+            reason: format!("packing failed: {e}"),
         })?;
 
         Ok(super::ProteinOutput {
@@ -257,6 +315,7 @@ impl BuildExecutor {
         script: &str,
         transcript: &mut std::fs::File,
         sandbox: Option<&SandboxHandle>,
+        progress: &dyn BuildProgress,
     ) -> Result<PhaseResult> {
         let phase_start = std::time::Instant::now();
         info!(phase = %phase, sandbox = sandbox.is_some(), "executing");
@@ -265,8 +324,10 @@ impl BuildExecutor {
             .map_err(|e| CoreError::io(ctx.transcript_path(), e.to_string()))?;
 
         let (success, log_output) = match sandbox {
-            Some(handle) => Self::run_phase_sandboxed(ctx, phase, script, handle, transcript)?,
-            None => Self::run_phase_host(ctx, phase, script, transcript)?,
+            Some(handle) => {
+                Self::run_phase_sandboxed(ctx, phase, script, handle, transcript, progress)?
+            }
+            None => Self::run_phase_host(ctx, phase, script, transcript, progress)?,
         };
 
         if !success {
@@ -288,6 +349,7 @@ impl BuildExecutor {
         script: &str,
         sandbox: &SandboxHandle,
         transcript: &mut std::fs::File,
+        progress: &dyn BuildProgress,
     ) -> Result<(bool, String)> {
         let output = sandbox
             .run_phase(script)
@@ -296,6 +358,14 @@ impl BuildExecutor {
                 phase: phase.to_string(),
                 message: format!("sandbox execution failed: {e}"),
             })?;
+
+        // Forward output lines to progress
+        for line in output.stdout.lines() {
+            progress.build_output(line);
+        }
+        for line in output.stderr.lines() {
+            progress.build_output(line);
+        }
 
         // Append output to transcript
         if !output.stdout.is_empty() {
@@ -315,11 +385,10 @@ impl BuildExecutor {
 
     /// Extract source tarballs from CAS to SRCDIR.
     /// Idempotent: skips extraction if SRCDIR already has content.
-    fn extract_sources(ctx: &BuildContext) -> Result<()> {
+    fn extract_sources(ctx: &BuildContext, progress: &dyn BuildProgress) -> Result<()> {
         let src_dir = ctx.src_dir();
         // Skip if sources were already extracted (e.g. by bootstrap)
-        if src_dir.exists() && std::fs::read_dir(&src_dir).map_or(false, |mut d| d.next().is_some())
-        {
+        if src_dir.exists() && std::fs::read_dir(&src_dir).is_ok_and(|mut d| d.next().is_some()) {
             debug!("SRCDIR already populated, skipping extraction");
             return Ok(());
         }
@@ -331,7 +400,15 @@ impl BuildExecutor {
         let store = ribosome_store::VacuoleStore::open(&vacuole_path).map_err(|e| {
             CoreError::io(&vacuole_path, format!("failed to open vacuole store: {e}"))
         })?;
-        crate::source::extract_source(&ctx.mrna, &store, &src_dir)
+        crate::source::extract_source(
+            &ctx.mrna,
+            &store,
+            &src_dir,
+            Some(&|count, filename| progress.on_extract_file(count, filename)),
+        )?;
+
+        progress.extract_done(0);
+        Ok(())
     }
 
     /// Build a SandboxConfig with environment variables pointing to sandbox-internal paths.
@@ -377,57 +454,91 @@ impl BuildExecutor {
     }
 
     /// Run a phase directly on the host via bash (no sandbox).
+    ///
+    /// Uses piped stdout/stderr to stream output in real time instead of
+    /// buffering everything until process exit. Lines from both streams are
+    /// forwarded to `progress.build_output()` as they arrive and appended to
+    /// the transcript log.
     fn run_phase_host(
         ctx: &BuildContext,
         phase: BuildPhase,
         script: &str,
         transcript: &mut std::fs::File,
+        progress: &dyn BuildProgress,
     ) -> Result<(bool, String)> {
-        // All phases execute in BUILDDIR; scripts use $SRCDIR to reference source files.
-        // This matches the LFS "separate build directory" pattern.
         let working_dir = ctx.build_dir();
-        // Ensure working directory exists
         std::fs::create_dir_all(&working_dir)
             .map_err(|e| CoreError::io(&working_dir, e.to_string()))?;
 
         let mut cmd = Command::new("bash");
         cmd.arg("-e").arg("-c").arg(script);
         cmd.current_dir(&working_dir);
+        cmd.stdout(Stdio::piped());
+        cmd.stderr(Stdio::piped());
 
-        // Inject environment variables
         for (key, value) in ctx.env_vars() {
             cmd.env(key, value);
         }
 
-        let output = cmd.output().map_err(|e| CoreError::CommandFailed {
+        let mut child = cmd.spawn().map_err(|e| CoreError::CommandFailed {
             package: ctx.mrna.name.clone(),
             phase: phase.to_string(),
             message: format!("failed to spawn bash: {e}"),
         })?;
 
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let stderr = String::from_utf8_lossy(&output.stderr);
+        let stdout = child.stdout.take();
+        let stderr = child.stderr.take();
 
-        // Append to transcript
-        if !stdout.is_empty() {
+        // Use channels to relay lines from stdout/stderr reader threads
+        // back to this thread for real-time progress reporting.
+        let (tx, rx) = std::sync::mpsc::channel::<String>();
+
+        let stdout_tx = tx.clone();
+        let stdout_thread = std::thread::spawn(move || {
+            if let Some(out) = stdout {
+                let reader = std::io::BufReader::new(out);
+                for line in reader.lines().map_while(|l| l.ok()) {
+                    let _ = stdout_tx.send(line);
+                }
+            }
+        });
+
+        let stderr_tx = tx;
+        let stderr_thread = std::thread::spawn(move || {
+            if let Some(err) = stderr {
+                let reader = std::io::BufReader::new(err);
+                for line in reader.lines().map_while(|l| l.ok()) {
+                    let _ = stderr_tx.send(line);
+                }
+            }
+        });
+
+        // Receive lines in real time and forward to progress + transcript
+        let mut log_output = String::new();
+        while let Ok(line) = rx.recv() {
+            progress.build_output(&line);
+            let line_with_newline = format!("{line}\n");
             transcript
-                .write_all(stdout.as_bytes())
+                .write_all(line_with_newline.as_bytes())
                 .map_err(|e| CoreError::io(ctx.transcript_path(), e.to_string()))?;
-        }
-        if !stderr.is_empty() {
-            transcript
-                .write_all(stderr.as_bytes())
-                .map_err(|e| CoreError::io(ctx.transcript_path(), e.to_string()))?;
+            log_output.push_str(&line_with_newline);
         }
 
-        let success = output.status.success();
-        let log_output = format!("{stdout}{stderr}");
+        let _ = stdout_thread.join();
+        let _ = stderr_thread.join();
+
+        let status = child.wait().map_err(|e| CoreError::CommandFailed {
+            package: ctx.mrna.name.clone(),
+            phase: phase.to_string(),
+            message: format!("failed to wait for bash: {e}"),
+        })?;
+
+        let success = status.success();
 
         if !success {
-            let exit_code = output.status.code().unwrap_or(-1);
+            let exit_code = status.code().unwrap_or(-1);
             warn!(
                 phase = %phase, exit_code,
-                stderr = %String::from_utf8_lossy(&output.stderr),
                 "command failed"
             );
         }
@@ -447,7 +558,7 @@ fn chrono_now() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{BuildConfig, BuildContext, BuildExecutor};
+    use crate::{BuildConfig, BuildContext, BuildExecutor, NoProgress};
     use ribosome_parser::{parse_mrna, MrnaFile};
 
     fn minimal_mrna() -> MrnaFile {
@@ -518,7 +629,7 @@ build:
         assert!(ctx.build_dir().exists());
         assert!(ctx.dest_dir().exists());
 
-        let result = BuildExecutor::build(&ctx).expect("build should not error");
+        let result = BuildExecutor::build(&ctx, &NoProgress).expect("build should not error");
         assert!(result.is_ok(), "build should succeed");
         assert_eq!(result.package, "test-pkg");
         assert_eq!(result.version, "1.0.0");
@@ -568,7 +679,134 @@ build:
         let config = BuildConfig::new(tmp.path());
         let ctx = BuildContext::new(mrna, config);
 
-        let result = BuildExecutor::build(&ctx).expect("build should not error");
+        let result = BuildExecutor::build(&ctx, &NoProgress).expect("build should not error");
         assert!(!result.is_ok(), "build should report failure");
+    }
+
+    #[test]
+    fn phase_markers_skip_completed_phases() {
+        let yaml = r#"
+api-version: 1
+name: marker-pkg
+version: 1.0.0
+release: 1
+description: Test marker skip
+license: MIT
+sources:
+  - url: https://example.com/test.tar.xz
+build:
+  prepare: |
+    echo "prepare" > "$DESTDIR/prepare.txt"
+  compile: |
+    echo "compile" > "$DESTDIR/compile.txt"
+  install: |
+    echo "install" > "$DESTDIR/install.txt"
+"#;
+        let mrna = parse_mrna(yaml).expect("valid mRNA");
+        let tmp = tempfile::tempdir().expect("create temp dir");
+        let config = BuildConfig::new(tmp.path());
+        let ctx = BuildContext::new(mrna, config);
+
+        // First build
+        let result = BuildExecutor::build(&ctx, &NoProgress).expect("first build should not error");
+        assert!(result.is_ok(), "first build should succeed");
+
+        // Verify files were created
+        assert!(ctx.dest_dir().join("prepare.txt").exists());
+        assert!(ctx.dest_dir().join("compile.txt").exists());
+        assert!(ctx.dest_dir().join("install.txt").exists());
+
+        // Verify markers were written
+        assert!(ctx.is_phase_done(BuildPhase::Prepare));
+        assert!(ctx.is_phase_done(BuildPhase::Compile));
+        assert!(ctx.is_phase_done(BuildPhase::Install));
+
+        // Remove install output to detect re-run
+        std::fs::remove_file(ctx.dest_dir().join("install.txt")).unwrap();
+
+        // Second build — should skip all phases (markers exist)
+        let result2 =
+            BuildExecutor::build(&ctx, &NoProgress).expect("second build should not error");
+        assert!(result2.is_ok(), "second build should succeed");
+
+        // install.txt should NOT be recreated because install phase was skipped
+        assert!(
+            !ctx.dest_dir().join("install.txt").exists(),
+            "install phase should have been skipped (marker exists)"
+        );
+    }
+
+    #[test]
+    fn clean_mode_ignores_markers() {
+        let yaml = r#"
+api-version: 1
+name: clean-pkg
+version: 1.0.0
+release: 1
+description: Test clean rebuild
+license: MIT
+sources:
+  - url: https://example.com/test.tar.xz
+build:
+  install: |
+    echo "installed" > "$DESTDIR/output.txt"
+"#;
+        let mrna = parse_mrna(yaml).expect("valid mRNA");
+        let tmp = tempfile::tempdir().expect("create temp dir");
+
+        let mut config = BuildConfig::new(tmp.path());
+        let ctx = BuildContext::new(mrna.clone(), config.clone());
+        let result = BuildExecutor::build(&ctx, &NoProgress).expect("first build should succeed");
+        assert!(result.is_ok());
+
+        // Verify marker
+        assert!(ctx.is_phase_done(BuildPhase::Install));
+
+        // Clean rebuild
+        config.clean = true;
+        let ctx2 = BuildContext::new(mrna, config);
+        let result2 = BuildExecutor::build(&ctx2, &NoProgress).expect("clean build should succeed");
+        assert!(result2.is_ok());
+        assert!(ctx2.dest_dir().join("output.txt").exists());
+    }
+
+    #[test]
+    fn is_build_complete_checks_all_phases() {
+        let yaml = r#"
+api-version: 1
+name: partial-pkg
+version: 1.0.0
+release: 1
+description: Test partial completion
+license: MIT
+sources:
+  - url: https://example.com/test.tar.xz
+build:
+  prepare: |
+    echo "prepare"
+  compile: |
+    echo "compile"
+  install: |
+    echo "install" > "$DESTDIR/out.txt"
+"#;
+        let mrna = parse_mrna(yaml).expect("valid mRNA");
+        let tmp = tempfile::tempdir().expect("create temp dir");
+        let config = BuildConfig::new(tmp.path());
+        let ctx = BuildContext::new(mrna, config);
+
+        // No markers yet
+        assert!(!ctx.is_build_complete());
+
+        // Mark only prepare
+        ctx.mark_phase_done(BuildPhase::Prepare).unwrap();
+        assert!(!ctx.is_build_complete());
+
+        // Mark compile
+        ctx.mark_phase_done(BuildPhase::Compile).unwrap();
+        assert!(!ctx.is_build_complete());
+
+        // Mark install
+        ctx.mark_phase_done(BuildPhase::Install).unwrap();
+        assert!(ctx.is_build_complete());
     }
 }

@@ -26,6 +26,7 @@ bzip2 = "0.4"
 tar = { workspace = true }
 zstd = { workspace = true }
 walkdir = { workspace = true }
+indicatif = "0.18"
 
 [dev-dependencies]
 tempfile = "3.14"

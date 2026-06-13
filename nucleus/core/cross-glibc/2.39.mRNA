@@ -13,16 +13,22 @@ sources:
 
 build:
   prepare: |
-    $SRCDIR/configure --prefix=/tools \
+    export PATH="$DESTDIR/tools/bin:$DESTDIR/tools/x86_64-lysine-linux-gnu/bin:$PATH"
+    export LD_LIBRARY_PATH="$DESTDIR/tools/x86_64-pc-linux-gnu/x86_64-lysine-linux-gnu/lib"
+    "$SRCDIR"/glibc-*/configure --prefix=/tools \
       --host=x86_64-lysine-linux-gnu \
-      --build=$($SRCDIR/config.guess) \
+      --build=$("$SRCDIR"/glibc-*/scripts/config.guess) \
       --enable-kernel=4.19 \
       --disable-werror \
       --enable-stack-protector=strong \
-      --with-headers=/tools/include
+      --with-headers="$DESTDIR/tools/include"
   compile: |
+    export PATH="$DESTDIR/tools/bin:$DESTDIR/tools/x86_64-lysine-linux-gnu/bin:$PATH"
+    export LD_LIBRARY_PATH="$DESTDIR/tools/x86_64-pc-linux-gnu/x86_64-lysine-linux-gnu/lib"
     make -j$NPROC
   install: |
+    export PATH="$DESTDIR/tools/bin:$DESTDIR/tools/x86_64-lysine-linux-gnu/bin:$PATH"
+    export LD_LIBRARY_PATH="$DESTDIR/tools/x86_64-pc-linux-gnu/x86_64-lysine-linux-gnu/lib"
     make DESTDIR="$DESTDIR" install
 
 tags:

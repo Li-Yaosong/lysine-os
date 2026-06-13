@@ -1,0 +1,59 @@
+api-version: 1
+name: glibc
+version: 2.43
+release: 1
+
+description: GNU C Library
+homepage: https://www.gnu.org/software/libc/
+license: GPL-2.0-or-later AND LGPL-2.1-or-later
+
+depends:
+  build:
+    - linux-api-headers
+  runtime:
+    - linux-api-headers
+
+features:
+  default: []
+  options:
+    nscd:
+      description: Name Service Cache Daemon
+    profile:
+      description: Enable profiling support
+
+sources:
+  - url: https://ftp.gnu.org/gnu/glibc/glibc-2.43.tar.xz
+    hash: sha256:d9c86c6b5dbddb43a3e08270c5844fc5177d19442cf5b8df4be7c07cd5fa3831
+
+build:
+  prepare: |
+    $SRCDIR/configure --prefix=/usr \
+      --disable-werror \
+      --enable-kernel=4.19 \
+      --enable-stack-protector=strong \
+      --with-headers=/usr/include
+  compile: |
+    make -j$(nproc)
+  check: |
+    make -j$(nproc) check || true
+  install: |
+    make DESTDIR="$DESTDIR" install
+
+post-install: |
+  ldconfig
+
+outputs:
+  main:
+    description: GNU C Library
+  dev:
+    description: Development files for glibc
+    files:
+      - /usr/include/**
+      - /usr/lib/libc.so
+      - /usr/lib/libc.a
+      - /usr/lib/libm.a
+  locale:
+    description: Locale data
+    files:
+      - /usr/share/locale/**
+      - /usr/share/i18n/**

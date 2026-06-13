@@ -8,6 +8,9 @@ use ribosome_store::hash_file as store_hash_file;
 
 use crate::error::{PackageError, Result};
 
+/// Callback type for pack progress: `(file_count)`.
+pub type PackCallback<'a> = &'a dyn Fn(usize);
+
 /// Metadata for a .prot package being created.
 pub struct PackageMeta {
     pub name: String,
@@ -46,7 +49,15 @@ pub struct PackResult {
 ///     ├── post-install.sh
 ///     └── post-remove.sh
 /// ```
-pub fn pack(dest_dir: &Path, meta: &PackageMeta, output_dir: &Path) -> Result<PackResult> {
+///
+/// `on_file` is an optional callback invoked with the running file count
+/// each time a file is added to the archive, for progress reporting.
+pub fn pack(
+    dest_dir: &Path,
+    meta: &PackageMeta,
+    output_dir: &Path,
+    on_file: Option<PackCallback<'_>>,
+) -> Result<PackResult> {
     std::fs::create_dir_all(output_dir)?;
 
     let filename = format!(
@@ -83,6 +94,9 @@ pub fn pack(dest_dir: &Path, meta: &PackageMeta, output_dir: &Path) -> Result<Pa
             let mut f = std::fs::File::open(path)?;
             builder.append_file(archive_path, &mut f)?;
             file_count += 1;
+            if let Some(cb) = on_file {
+                cb(file_count);
+            }
         }
     }
 
@@ -386,7 +400,7 @@ mod tests {
         create_dest_dir(&dest_dir);
 
         let meta = test_meta();
-        let result = pack(&dest_dir, &meta, &output_dir).unwrap();
+        let result = pack(&dest_dir, &meta, &output_dir, None).unwrap();
 
         assert!(result.path.exists());
         assert!(result.path.to_string_lossy().ends_with(".prot"));
@@ -405,7 +419,7 @@ mod tests {
         create_dest_dir(&dest_dir);
 
         let meta = test_meta();
-        let pack_result = pack(&dest_dir, &meta, &output_dir).unwrap();
+        let pack_result = pack(&dest_dir, &meta, &output_dir, None).unwrap();
 
         let extracted = unpack(&pack_result.path, &install_dir).unwrap();
         assert_eq!(extracted.len(), 2);
@@ -427,7 +441,7 @@ mod tests {
         fs::create_dir_all(&dest_dir).unwrap();
 
         let meta = test_meta();
-        let result = pack(&dest_dir, &meta, &output_dir).unwrap();
+        let result = pack(&dest_dir, &meta, &output_dir, None).unwrap();
 
         assert!(result.path.exists());
         assert_eq!(result.file_count, 0);
@@ -444,7 +458,7 @@ mod tests {
         fs::write(dest_dir.join("usr/share/doc/test/README"), "Hello World").unwrap();
 
         let meta = test_meta();
-        let pack_result = pack(&dest_dir, &meta, &output_dir).unwrap();
+        let pack_result = pack(&dest_dir, &meta, &output_dir, None).unwrap();
         unpack(&pack_result.path, &install_dir).unwrap();
 
         let readme = fs::read_to_string(install_dir.join("usr/share/doc/test/README")).unwrap();

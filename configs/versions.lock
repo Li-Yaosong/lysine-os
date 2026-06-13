@@ -15,7 +15,7 @@
 # === 核心系统 ===
 linux-api-headers = "7.0"
 linux-kernel      = "7.0"
-glibc             = "2.39"
+glibc             = "2.43"
 systemd           = "257"
 gcc               = "14.2.0"
 binutils          = "2.42"
@@ -35,7 +35,7 @@ pkgconf  = "2.2.0"
 # === 交叉编译工具链 ===
 cross-binutils  = "2.42"
 cross-gcc       = "14.2.0"
-cross-glibc     = "2.39"
+cross-glibc     = "2.43"
 cross-libstdcxx = "14.2.0"
 
 # === 基础库 ===

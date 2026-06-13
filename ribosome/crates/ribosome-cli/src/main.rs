@@ -3,11 +3,13 @@ use std::process::ExitCode;
 
 use anyhow::{bail, Context, Result};
 use clap::Parser;
-use ribosome_core::{BootstrapPhase, MrnaIndex, PackageSpec};
+use ribosome_core::{BootstrapPhase, BuildProgress, MrnaIndex, PackageSpec};
 use ribosome_deps::DependencyGraph;
 use ribosome_parser::{collect_validation_issues, parse_mrna_file, Severity, ValidationIssue};
 use ribosome_sandbox::{SandboxConfig, SandboxHandle};
 use walkdir::WalkDir;
+
+mod progress;
 
 #[derive(Parser)]
 #[command(name = "ribosome")]
@@ -63,6 +65,9 @@ enum Commands {
         /// Custom root filesystem path for the sandbox (default: host root "/")
         #[arg(long)]
         rootfs: Option<PathBuf>,
+        /// Force full rebuild, ignoring phase markers
+        #[arg(long)]
+        clean: bool,
     },
     /// Download source tarballs declared in mRNA files
     Fetch {
@@ -125,6 +130,9 @@ enum Commands {
         /// Continue building after failures
         #[arg(long)]
         continue_on_error: bool,
+        /// Force full rebuild, ignoring phase markers
+        #[arg(long)]
+        clean: bool,
     },
 }
 
@@ -154,7 +162,15 @@ enum RepoAction {
 }
 
 fn main() -> ExitCode {
-    tracing_subscriber::fmt::init();
+    // Configure tracing: only WARN and above to stderr, so INFO logs
+    // don't interleave with pip-style progress output on stdout.
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("warn")),
+        )
+        .with_writer(std::io::stderr)
+        .init();
     match run() {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
@@ -182,9 +198,10 @@ fn run() -> Result<()> {
             drop_capabilities,
             syscall_filter,
             rootfs,
+            clean,
         } => {
             if all {
-                cmd_build_all(&package, &build_root, continue_on_error, jobs)
+                cmd_build_all(&package, &build_root, continue_on_error, jobs, clean)
             } else {
                 cmd_build(BuildArgs {
                     mrna_path: &package,
@@ -199,6 +216,7 @@ fn run() -> Result<()> {
                     drop_capabilities: drop_capabilities.as_deref(),
                     syscall_filter: syscall_filter.as_slice(),
                     rootfs: rootfs.as_deref(),
+                    clean,
                 })
             }
         }
@@ -225,6 +243,7 @@ fn run() -> Result<()> {
             cache_dir,
             lock_file,
             continue_on_error,
+            clean,
         } => cmd_bootstrap(
             phase.as_deref(),
             &nucleus_dir,
@@ -232,6 +251,7 @@ fn run() -> Result<()> {
             &cache_dir,
             &lock_file,
             continue_on_error,
+            clean,
         ),
     }
 }
@@ -390,6 +410,7 @@ struct BuildArgs<'a> {
     drop_capabilities: Option<&'a str>,
     syscall_filter: &'a [String],
     rootfs: Option<&'a Path>,
+    clean: bool,
 }
 
 fn cmd_build(args: BuildArgs<'_>) -> Result<()> {
@@ -402,12 +423,12 @@ fn cmd_build(args: BuildArgs<'_>) -> Result<()> {
     let use_sandbox = args.sandbox || args.no_network || args.user_namespace;
 
     if use_sandbox {
-        println!("[SANDBOX] Build will run inside membrane sandbox (systemd-nspawn)");
+        eprintln!("[SANDBOX] Build will run inside membrane sandbox (systemd-nspawn)");
         if args.no_network {
-            println!("[SANDBOX] Network isolation enabled");
+            eprintln!("[SANDBOX] Network isolation enabled");
         }
         if args.user_namespace {
-            println!("[SANDBOX] User namespace enabled (unprivileged mode)");
+            eprintln!("[SANDBOX] User namespace enabled (unprivileged mode)");
         }
     } else {
         eprintln!("\x1b[33m[WARN] Building without membrane sandbox — scripts execute directly on host.\x1b[0m");
@@ -418,6 +439,7 @@ fn cmd_build(args: BuildArgs<'_>) -> Result<()> {
     if let Some(j) = args.jobs {
         config.jobs = j;
     }
+    config.clean = args.clean;
 
     if use_sandbox {
         let base_dir = config.build_root.join(&label);
@@ -456,26 +478,12 @@ fn cmd_build(args: BuildArgs<'_>) -> Result<()> {
         config.sandbox_config = Some(sandbox_config);
     }
 
+    let prog = progress::PipStyleProgress::new();
     let ctx = ribosome_core::BuildContext::new(mrna, config);
-    let result = ribosome_core::BuildExecutor::build(&ctx)
+    let result = ribosome_core::BuildExecutor::build(&ctx, &prog)
         .with_context(|| format!("build failed for {label}"))?;
 
-    for phase in &result.phases {
-        let status = if phase.success { "OK" } else { "FAIL" };
-        println!(
-            "  [{status}] {} ({:.1}s)",
-            phase.phase,
-            phase.duration.as_secs_f64()
-        );
-    }
-
     if result.is_ok() {
-        println!(
-            "[OK] {} — {} phases, {:.1}s total",
-            result.package,
-            result.phases.len(),
-            result.total_duration.as_secs_f64()
-        );
         println!("  dest: {}", result.dest_dir.display());
         println!("  transcript: {}", ctx.transcript_path().display());
         if let Some(protein) = &result.protein {
@@ -516,6 +524,7 @@ fn cmd_build_all(
     build_root: &Path,
     continue_on_error: bool,
     jobs: Option<usize>,
+    clean: bool,
 ) -> Result<()> {
     let index = MrnaIndex::scan(dir)
         .with_context(|| format!("scanning mRNA files from {}", dir.display()))?;
@@ -542,17 +551,9 @@ fn cmd_build_all(
         .topological_sort()
         .context("failed to compute build order")?;
 
-    println!("Build order ({} packages):", order.len());
-    for name in &order {
-        println!("  - {name}");
-    }
+    println!("Building {} package(s) from {}", order.len(), dir.display());
 
-    println!(
-        "Building {} package(s) from {}",
-        index.package_count(),
-        dir.display()
-    );
-
+    let prog = progress::PipStyleProgress::new();
     let mut succeeded = 0usize;
     let mut failed = 0usize;
     let mut skipped = 0usize;
@@ -581,28 +582,21 @@ fn cmd_build_all(
         };
 
         let label = format!("{}-{}", mrna.name, mrna.version);
-        println!(
-            "\n[{}/{}] Building {label}...",
-            succeeded + failed + 1,
-            order.len()
-        );
+        let pkg_index = succeeded + failed + 1;
+        prog.package_started(pkg_index, order.len(), &label);
 
         let mut config = ribosome_core::BuildConfig::new(build_root);
         if let Some(j) = jobs {
             config.jobs = j;
         }
+        config.clean = clean;
 
         let ctx = ribosome_core::BuildContext::new(mrna, config);
 
-        match ribosome_core::BuildExecutor::build(&ctx) {
+        match ribosome_core::BuildExecutor::build(&ctx, &prog) {
             Ok(result) => {
                 if result.is_ok() {
-                    println!(
-                        "[OK] {} — {} phases, {:.1}s",
-                        result.package,
-                        result.phases.len(),
-                        result.total_duration.as_secs_f64()
-                    );
+                    prog.package_finished(&label, true, result.total_duration);
                     if let Some(protein) = &result.protein {
                         println!(
                             "  protein: {} ({} files, {})",
@@ -613,7 +607,7 @@ fn cmd_build_all(
                     }
                     succeeded += 1;
                 } else {
-                    eprintln!("[FAIL] {label}: build did not complete successfully");
+                    prog.package_finished(&label, false, result.total_duration);
                     failed += 1;
                     if !continue_on_error {
                         bail!("build aborted after failure for {label}");
@@ -621,6 +615,7 @@ fn cmd_build_all(
                 }
             }
             Err(e) => {
+                prog.package_finished(&label, false, std::time::Duration::ZERO);
                 eprintln!("[FAIL] {label}: {e:#}");
                 failed += 1;
                 if !continue_on_error {
@@ -677,7 +672,23 @@ fn cmd_fetch(path: &Path, cache_dir: &Path) -> Result<()> {
     let store = ribosome_store::VacuoleStore::open(&vacuole_path)
         .with_context(|| format!("failed to open vacuole store at {}", vacuole_path.display()))?;
 
-    let report = ribosome_core::fetch_sources_batch(&mrnas, &store);
+    use std::io::Write;
+    let report = ribosome_core::fetch_sources_batch_with_progress(
+        &mrnas,
+        &store,
+        Some(&|current, total, name, fetched, failed| {
+            let status = if failed > 0 {
+                "FAIL"
+            } else if fetched > 0 {
+                "OK"
+            } else {
+                "SKIP"
+            };
+            println!("  [{current:>3}/{total}] [{status:>4}] {name}");
+            // Flush so output appears immediately (not buffered until program end)
+            let _ = std::io::stdout().flush();
+        }),
+    );
 
     for (pkg, err) in &report.errors {
         if err.url.is_empty() {
@@ -688,9 +699,10 @@ fn cmd_fetch(path: &Path, cache_dir: &Path) -> Result<()> {
     }
 
     println!(
-        "Fetch complete: {} packages, {} fetched, {} skipped, {} failed",
+        "Fetch complete: {} packages, {} downloaded, {} cached, {} skipped, {} failed",
         report.packages_processed,
         report.sources_fetched,
+        report.sources_cached,
         report.sources_skipped,
         report.sources_failed,
     );
@@ -739,12 +751,15 @@ fn cmd_bootstrap(
     cache_dir: &Path,
     lock_file: &Path,
     continue_on_error: bool,
+    clean: bool,
 ) -> Result<()> {
     let lock_display = if lock_file.exists() {
         format!("{}", lock_file.display())
     } else {
         "(not found, using latest versions)".to_string()
     };
+
+    let prog = progress::PipStyleProgress::new();
 
     if let Some(phase_str) = phase {
         let phase = phase_str
@@ -756,6 +771,7 @@ fn cmd_bootstrap(
         println!("  build root: {}", build_root.display());
         println!("  cache:      {}", cache_dir.display());
         println!("  lock file:  {lock_display}");
+        println!();
 
         let report = ribosome_core::bootstrap_phase(
             phase,
@@ -764,6 +780,8 @@ fn cmd_bootstrap(
             cache_dir,
             Some(lock_file),
             continue_on_error,
+            clean,
+            &prog,
         )
         .context("bootstrap phase failed")?;
 
@@ -777,7 +795,7 @@ fn cmd_bootstrap(
             );
         }
 
-        println!("\nPhase '{}' completed successfully!", report.phase);
+        println!("Phase '{}' completed successfully!", report.phase);
         Ok(())
     } else {
         println!("=== Full Bootstrap (All Phases) ===");
@@ -793,6 +811,8 @@ fn cmd_bootstrap(
             cache_dir,
             Some(lock_file),
             continue_on_error,
+            clean,
+            &prog,
         )
         .context("bootstrap failed")?;
 

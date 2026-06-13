@@ -13,4 +13,5 @@ sources:
 
 build:
   install: |
-    make headers_install DESTDIR="$DESTDIR"/usr
+    cd "$SRCDIR"/linux-*
+    make headers_install INSTALL_HDR_PATH="$DESTDIR/tools"

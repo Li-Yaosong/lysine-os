@@ -15,6 +15,9 @@ use ribosome_store::VacuoleStore;
 
 use crate::error::{CoreError, Result};
 
+/// Callback type for extract progress: `(file_count, filename)`.
+pub type ExtractCallback<'a> = &'a dyn Fn(usize, &str);
+
 // ---------------------------------------------------------------------------
 // Fetch types and batch reporting
 // ---------------------------------------------------------------------------
@@ -24,9 +27,11 @@ use crate::error::{CoreError, Result};
 pub struct FetchReport {
     /// Package name.
     pub package: String,
-    /// Number of sources successfully fetched (downloaded or already cached).
+    /// Number of sources successfully downloaded (not counting cached).
     pub fetched: usize,
-    /// Number of sources skipped (e.g. signature-only files without a hash).
+    /// Number of sources already present in cache (not downloaded).
+    pub cached: usize,
+    /// Number of sources skipped because they have no hash (e.g. signature-only files).
     pub skipped: usize,
     /// Number of sources that failed.
     pub failed: usize,
@@ -45,8 +50,13 @@ pub struct FetchError {
 #[derive(Debug, Default)]
 pub struct BatchFetchReport {
     pub packages_processed: usize,
+    /// Sources actually downloaded from remote.
     pub sources_fetched: usize,
+    /// Sources already in cache (not downloaded).
+    pub sources_cached: usize,
+    /// Sources skipped (e.g. signature files without hash).
     pub sources_skipped: usize,
+    /// Sources that failed to download.
     pub sources_failed: usize,
     pub errors: Vec<(String, FetchError)>,
 }
@@ -54,6 +64,10 @@ pub struct BatchFetchReport {
 // ---------------------------------------------------------------------------
 // Fetch: download sources and store in CAS
 // ---------------------------------------------------------------------------
+
+/// Callback type for fetch progress per source file: `(package_name, filename, status)`.
+/// Status values: "cached", "downloading", "ok", "fail".
+pub type SourceProgressCallback<'a> = &'a dyn Fn(&str, &str, &str);
 
 /// Fetch all sources declared in an mRNA file, storing them in the vacuole CAS.
 ///
@@ -65,9 +79,19 @@ pub struct BatchFetchReport {
 /// Source files without a `hash` field are skipped with a warning
 /// (signature-only files like `.sig` or `.asc`).
 pub fn fetch_sources(mrna: &MrnaFile, store: &VacuoleStore) -> Result<FetchReport> {
+    fetch_sources_with_progress(mrna, store, None)
+}
+
+/// Fetch sources with optional per-file progress callback.
+pub fn fetch_sources_with_progress(
+    mrna: &MrnaFile,
+    store: &VacuoleStore,
+    on_progress: Option<SourceProgressCallback<'_>>,
+) -> Result<FetchReport> {
     let mut report = FetchReport {
         package: mrna.name.clone(),
         fetched: 0,
+        cached: 0,
         skipped: 0,
         failed: 0,
         errors: Vec::new(),
@@ -85,7 +109,10 @@ pub fn fetch_sources(mrna: &MrnaFile, store: &VacuoleStore) -> Result<FetchRepor
             .is_some()
         {
             info!(package = %mrna.name, file = %filename, "source already cached, skipping");
-            report.fetched += 1;
+            if let Some(cb) = on_progress {
+                cb(&mrna.name, &filename, "cached");
+            }
+            report.cached += 1;
             continue;
         }
 
@@ -94,11 +121,23 @@ pub fn fetch_sources(mrna: &MrnaFile, store: &VacuoleStore) -> Result<FetchRepor
             Some(h) => h.clone(),
             None => {
                 debug!(package = %mrna.name, url = %source.url, "skipping source without hash (signature-only file)");
+                report.skipped += 1;
                 continue;
             }
         };
 
         info!(package = %mrna.name, url = %source.url, "downloading source");
+        if let Some(cb) = on_progress {
+            cb(&mrna.name, &filename, "downloading");
+        }
+
+        // Create a progress bar for this download
+        let pb = indicatif::ProgressBar::new_spinner();
+        pb.set_style(
+            indicatif::ProgressStyle::with_template("    {msg} {spinner:.green} ...").unwrap(),
+        );
+        pb.set_message(filename.clone());
+        pb.enable_steady_tick(std::time::Duration::from_millis(200));
 
         // Build candidate URL list: mirror replacements first, then original.
         let mut urls: Vec<String> = Vec::new();
@@ -117,7 +156,9 @@ pub fn fetch_sources(mrna: &MrnaFile, store: &VacuoleStore) -> Result<FetchRepor
             if url != &source.url {
                 info!(package = %mrna.name, mirror = %url, "trying mirror");
             }
-            match download_and_verify(url, &expected_hash) {
+            // Update progress bar message to show the actual URL being tried
+            pb.set_message(url.clone());
+            match download_and_verify(url, &expected_hash, Some(&pb)) {
                 Ok(data) => {
                     let digest = store.put_bytes(&data).map_err(|e| {
                         CoreError::io(PathBuf::from(&filename), format!("CAS store failed: {e}"))
@@ -130,6 +171,10 @@ pub fn fetch_sources(mrna: &MrnaFile, store: &VacuoleStore) -> Result<FetchRepor
                         hash = %digest.to_prefixed(), size = data.len(),
                         "source fetched and cached"
                     );
+                    pb.finish_with_message(format!("✓ {} (via {})", filename, url));
+                    if let Some(cb) = on_progress {
+                        cb(&mrna.name, &filename, "ok");
+                    }
                     report.fetched += 1;
                     success = true;
                     break;
@@ -146,6 +191,10 @@ pub fn fetch_sources(mrna: &MrnaFile, store: &VacuoleStore) -> Result<FetchRepor
         }
 
         if !success {
+            pb.finish_with_message(format!("✗ {} (all sources failed)", filename));
+            if let Some(cb) = on_progress {
+                cb(&mrna.name, &filename, "fail");
+            }
             report.failed += 1;
             report.errors.push(FetchError {
                 url: source.url.clone(),
@@ -157,19 +206,50 @@ pub fn fetch_sources(mrna: &MrnaFile, store: &VacuoleStore) -> Result<FetchRepor
     Ok(report)
 }
 
+/// Callback type for fetch progress: `(current_index, total, package_name, fetched, failed)`.
+pub type FetchProgressCallback<'a> = &'a dyn Fn(usize, usize, &str, usize, usize);
+
 /// Fetch sources for multiple mRNA files, collecting an aggregate report.
 pub fn fetch_sources_batch(mrnas: &[MrnaFile], store: &VacuoleStore) -> BatchFetchReport {
-    let mut batch = BatchFetchReport::default();
+    fetch_sources_batch_with_progress(mrnas, store, None)
+}
 
-    for mrna in mrnas {
+/// Fetch sources for multiple mRNA files with optional progress callback.
+pub fn fetch_sources_batch_with_progress(
+    mrnas: &[MrnaFile],
+    store: &VacuoleStore,
+    on_progress: Option<FetchProgressCallback<'_>>,
+) -> BatchFetchReport {
+    let mut batch = BatchFetchReport::default();
+    let total = mrnas.len();
+
+    let source_cb: Option<SourceProgressCallback<'_>> = match on_progress {
+        Some(_) => Some(&|pkg: &str, file: &str, status: &str| {
+            let label = match status {
+                "cached" => "cached ",
+                "downloading" => "fetch  ",
+                "ok" => "ok     ",
+                "fail" => "FAIL   ",
+                _ => status,
+            };
+            eprintln!("    [{label}] {pkg}: {file}");
+        }),
+        None => None,
+    };
+
+    for (i, mrna) in mrnas.iter().enumerate() {
         batch.packages_processed += 1;
-        match fetch_sources(mrna, store) {
+        match fetch_sources_with_progress(mrna, store, source_cb) {
             Ok(report) => {
                 batch.sources_fetched += report.fetched;
+                batch.sources_cached += report.cached;
                 batch.sources_skipped += report.skipped;
                 batch.sources_failed += report.failed;
                 for err in report.errors {
                     batch.errors.push((mrna.name.clone(), err));
+                }
+                if let Some(cb) = on_progress {
+                    cb(i + 1, total, &mrna.name, report.fetched, report.failed);
                 }
             }
             Err(e) => {
@@ -181,6 +261,9 @@ pub fn fetch_sources_batch(mrnas: &[MrnaFile], store: &VacuoleStore) -> BatchFet
                         reason: e.to_string(),
                     },
                 ));
+                if let Some(cb) = on_progress {
+                    cb(i + 1, total, &mrna.name, 0, mrna.sources.len());
+                }
             }
         }
     }
@@ -199,7 +282,15 @@ pub fn fetch_sources_batch(mrnas: &[MrnaFile], store: &VacuoleStore) -> BatchFet
 /// are hoisted up to `src_dir` directly (e.g. `gcc-14.2.0/` -> `src_dir/`).
 ///
 /// If no source is found in CAS, this is a no-op.
-pub fn extract_source(mrna: &MrnaFile, store: &VacuoleStore, src_dir: &Path) -> Result<()> {
+///
+/// `on_file` is an optional callback invoked as `(file_count, filename)` for
+/// each extracted entry, used for progress reporting.
+pub fn extract_source(
+    mrna: &MrnaFile,
+    store: &VacuoleStore,
+    src_dir: &Path,
+    on_file: Option<ExtractCallback<'_>>,
+) -> Result<()> {
     if mrna.sources.is_empty() {
         debug!(package = %mrna.name, "no sources declared, skipping extraction");
         return Ok(());
@@ -255,12 +346,12 @@ pub fn extract_source(mrna: &MrnaFile, store: &VacuoleStore, src_dir: &Path) -> 
         if i == 0 {
             info!(package = %mrna.name, file = %filename, "extracting primary source to {}", src_dir.display());
             std::fs::create_dir_all(src_dir).map_err(|e| CoreError::io(src_dir, e.to_string()))?;
-            extract_tarball(&cas_path, src_dir, &filename, true)?;
+            extract_tarball(&cas_path, src_dir, &filename, true, on_file)?;
         } else {
             // Additional sources: extract into src_dir without hoisting,
             // so they become subdirectories (e.g. src_dir/gmp-6.3.0/)
             info!(package = %mrna.name, file = %filename, "extracting additional source into {}", src_dir.display());
-            extract_tarball(&cas_path, src_dir, &filename, false)?;
+            extract_tarball(&cas_path, src_dir, &filename, false, on_file)?;
         }
     }
 
@@ -305,13 +396,13 @@ pub fn resolve_source(
 /// Maximum number of download retries per URL.
 const MAX_DOWNLOAD_RETRIES: u32 = 3;
 
-/// Download a file from URL and verify its SHA-256 hash.
+/// Download a file from URL with progress bar, verify SHA-256 hash.
 ///
-/// Retries up to `MAX_DOWNLOAD_RETRIES` times on transient network errors
-/// (connection reset, timeout, partial body read) before giving up.
+/// Retries up to `MAX_DOWNLOAD_RETRIES` times on transient network errors.
 fn download_and_verify(
     url: &str,
     expected_hash: &str,
+    progress_bar: Option<&indicatif::ProgressBar>,
 ) -> std::result::Result<Vec<u8>, DownloadError> {
     let expected_hex = expected_hash
         .strip_prefix("sha256:")
@@ -341,10 +432,13 @@ fn download_and_verify(
         if attempt > 0 {
             let delay = std::time::Duration::from_secs(2u64.pow(attempt - 1));
             warn!(url = %url, attempt, "retrying download after {:?}", delay);
+            if let Some(pb) = progress_bar {
+                pb.set_message(format!("retry {}/{}", attempt, MAX_DOWNLOAD_RETRIES));
+            }
             std::thread::sleep(delay);
         }
 
-        match try_download(&client, url, expected_hex) {
+        match try_download(&client, url, expected_hex, progress_bar) {
             Ok(data) => return Ok(data),
             Err(e) => {
                 let is_transient = e.reason.contains("error decoding response body")
@@ -369,11 +463,12 @@ fn download_and_verify(
     }))
 }
 
-/// Single download attempt: GET url, read body, verify hash.
+/// Single download attempt with streaming + progress bar + hash verification.
 fn try_download(
     client: &reqwest::blocking::Client,
     url: &str,
     expected_hex: &str,
+    progress_bar: Option<&indicatif::ProgressBar>,
 ) -> std::result::Result<Vec<u8>, DownloadError> {
     let response = client.get(url).send().map_err(|e| DownloadError {
         url: url.to_string(),
@@ -387,13 +482,56 @@ fn try_download(
         });
     }
 
-    let data = response.bytes().map_err(|e| DownloadError {
-        url: url.to_string(),
-        reason: format!("failed to read response body: {e}"),
-    })?;
+    let total_size = response.content_length();
+    if let Some(pb) = progress_bar {
+        pb.reset();
+        pb.set_position(0);
+        if let Some(size) = total_size {
+            pb.set_length(size);
+        }
+        pb.set_style(
+            indicatif::ProgressStyle::with_template(
+                "    {msg} {spinner:.green} [{wide_bar:.cyan/blue}] {bytes}/{total_bytes} ({bytes_per_sec}, {eta})",
+            )
+            .unwrap()
+            .progress_chars("#>-"),
+        );
+    }
 
+    // Stream response body into a buffer while updating progress
+    let mut data = Vec::new();
     let mut hasher = Sha256::new();
-    hasher.update(&data);
+    let mut downloaded: u64 = 0;
+    let mut last_update = std::time::Instant::now();
+    let mut reader = std::io::BufReader::new(response);
+    let mut buf = [0u8; 64 * 1024]; // 64 KB read buffer
+
+    loop {
+        use std::io::Read;
+        let n = reader.read(&mut buf).map_err(|e| DownloadError {
+            url: url.to_string(),
+            reason: format!("failed to read response body: {e}"),
+        })?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buf[..n]);
+        downloaded += n as u64;
+        data.extend_from_slice(&buf[..n]);
+
+        // Throttle progress bar updates to ~20 fps
+        if let Some(pb) = progress_bar {
+            if last_update.elapsed() >= std::time::Duration::from_millis(50) {
+                pb.set_position(downloaded);
+                last_update = std::time::Instant::now();
+            }
+        }
+    }
+
+    if let Some(pb) = progress_bar {
+        pb.set_position(downloaded);
+    }
+
     let computed_hex = format!("{:x}", hasher.finalize());
 
     if computed_hex != expected_hex {
@@ -403,7 +541,7 @@ fn try_download(
         });
     }
 
-    Ok(data.to_vec())
+    Ok(data)
 }
 
 /// Extract the filename from a URL path.
@@ -427,11 +565,15 @@ fn url_filename(url: &str) -> String {
 ///
 /// Supports: .tar.gz, .tar.xz, .tar.zst, .tar.bz2, .tar
 /// When `hoist` is true, hoists single top-level directory contents up to `target_dir`.
+///
+/// `on_file` is an optional callback invoked as `(file_count, filename)` for each
+/// extracted entry, used for progress reporting.
 fn extract_tarball(
     archive_path: &Path,
     target_dir: &Path,
     filename: &str,
     hoist: bool,
+    on_file: Option<ExtractCallback<'_>>,
 ) -> Result<()> {
     let file = std::fs::File::open(archive_path)
         .map_err(|e| CoreError::io(archive_path, e.to_string()))?;
@@ -440,19 +582,19 @@ fn extract_tarball(
 
     if filename_lower.ends_with(".tar.gz") || filename_lower.ends_with(".tgz") {
         let decoder = flate2::read::GzDecoder::new(file);
-        do_extract(&mut tar::Archive::new(decoder), target_dir, hoist)
+        do_extract(&mut tar::Archive::new(decoder), target_dir, hoist, on_file)
     } else if filename_lower.ends_with(".tar.xz") || filename_lower.ends_with(".tar.lzma") {
         let decoder = xz2::read::XzDecoder::new(file);
-        do_extract(&mut tar::Archive::new(decoder), target_dir, hoist)
+        do_extract(&mut tar::Archive::new(decoder), target_dir, hoist, on_file)
     } else if filename_lower.ends_with(".tar.zst") {
         let decoder = zstd::Decoder::new(file)
             .map_err(|e| CoreError::io(archive_path, format!("zstd decode: {e}")))?;
-        do_extract(&mut tar::Archive::new(decoder), target_dir, hoist)
+        do_extract(&mut tar::Archive::new(decoder), target_dir, hoist, on_file)
     } else if filename_lower.ends_with(".tar.bz2") {
         let decoder = bzip2::read::BzDecoder::new(file);
-        do_extract(&mut tar::Archive::new(decoder), target_dir, hoist)
+        do_extract(&mut tar::Archive::new(decoder), target_dir, hoist, on_file)
     } else if filename_lower.ends_with(".tar") {
-        do_extract(&mut tar::Archive::new(file), target_dir, hoist)
+        do_extract(&mut tar::Archive::new(file), target_dir, hoist, on_file)
     } else {
         Err(CoreError::BuildFailed {
             package: filename.to_string(),
@@ -466,8 +608,10 @@ fn do_extract<R: std::io::Read>(
     archive: &mut tar::Archive<R>,
     target_dir: &Path,
     hoist: bool,
+    on_file: Option<ExtractCallback<'_>>,
 ) -> Result<()> {
     let mut top_dirs = std::collections::HashSet::new();
+    let mut file_count = 0usize;
 
     for entry in archive
         .entries()
@@ -499,9 +643,19 @@ fn do_extract<R: std::io::Read>(
             }
         }
 
+        let entry_name = path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+
         entry
             .unpack_in(target_dir)
             .map_err(|e| CoreError::io(target_dir, format!("extract {}: {e}", path.display())))?;
+
+        file_count += 1;
+        if let Some(cb) = on_file {
+            cb(file_count, &entry_name);
+        }
     }
 
     // Hoist: if all entries share a single top-level directory
@@ -592,8 +746,22 @@ fn load_mirrors() -> Vec<(String, String)> {
         }
     }
 
-    // Load from RIBOSOME_MIRROR_FILE
-    if let Ok(path) = std::env::var("RIBOSOME_MIRROR_FILE") {
+    // Default mirror config search paths (in priority order).
+    // The first existing file is used, unless RIBOSOME_MIRROR_FILE overrides.
+    let default_paths = [
+        "configs/mirrors.conf",
+        "lysine-os/configs/mirrors.conf",
+        "/etc/lysine/mirrors.conf",
+    ];
+    let mirror_file = std::env::var("RIBOSOME_MIRROR_FILE").ok().or_else(|| {
+        default_paths
+            .iter()
+            .map(PathBuf::from)
+            .find(|p| p.exists())
+            .map(|p| p.to_string_lossy().into_owned())
+    });
+
+    if let Some(path) = mirror_file {
         if let Ok(content) = std::fs::read_to_string(&path) {
             for line in content.lines() {
                 let line = line.trim();
@@ -607,6 +775,9 @@ fn load_mirrors() -> Vec<(String, String)> {
                         mirrors.push((from, to));
                     }
                 }
+            }
+            if !mirrors.is_empty() {
+                info!(path = %path, rules = mirrors.len(), "loaded mirror configuration");
             }
         }
     }
@@ -670,10 +841,10 @@ build:
         let store = VacuoleStore::open(tmp.path()).unwrap();
 
         let report = fetch_sources(&mrna, &store).expect("fetch should not error");
-        // Signature files without hash are silently ignored, not counted as skipped
+        // Signature files without hash are counted as skipped
         assert_eq!(
-            report.skipped, 0,
-            "signature-only files should not be counted"
+            report.skipped, 1,
+            "signature-only file without hash should be counted as skipped"
         );
         assert_eq!(report.fetched, 0, "nothing actually downloaded");
     }
@@ -685,7 +856,7 @@ build:
             sources_fetched: 5,
             sources_skipped: 2,
             sources_failed: 1,
-            errors: vec![],
+            ..Default::default()
         };
         assert_eq!(batch.packages_processed, 3);
         assert_eq!(batch.sources_fetched, 5);
@@ -736,7 +907,7 @@ build:
 
         // Extract
         std::fs::create_dir_all(&extract_dir).unwrap();
-        extract_tarball(&tarball_path, &extract_dir, "test-1.0.tar.gz", true).unwrap();
+        extract_tarball(&tarball_path, &extract_dir, "test-1.0.tar.gz", true, None).unwrap();
 
         // After hoisting, files should be directly in extract_dir
         assert!(extract_dir.join("README.txt").exists());

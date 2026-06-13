@@ -15,6 +15,7 @@ use crate::error::{CoreError, Result};
 use crate::executor::BuildExecutor;
 use crate::mrna_index::MrnaIndex;
 use crate::profile::{self, BootstrapPhase};
+use crate::progress::BuildProgress;
 use crate::source;
 
 /// Summary of a bootstrap run for a single phase.
@@ -40,6 +41,7 @@ pub struct BootstrapReport {
 ///
 /// Scans the nucleus directory for mRNA files, resolves the package list
 /// for the given phase, and builds each package with the appropriate profile.
+#[allow(clippy::too_many_arguments)]
 pub fn bootstrap_phase(
     phase: BootstrapPhase,
     nucleus_dir: &Path,
@@ -47,13 +49,15 @@ pub fn bootstrap_phase(
     cache_dir: &Path,
     lock_file: Option<&Path>,
     continue_on_error: bool,
+    clean: bool,
+    progress: &dyn BuildProgress,
 ) -> Result<BootstrapPhaseReport> {
     // Ensure paths are absolute — relative paths break when bash changes working directory
     let build_root = if build_root.is_relative() {
-        std::path::PathBuf::from(std::fs::canonicalize(build_root).unwrap_or_else(|_| {
+        std::fs::canonicalize(build_root).unwrap_or_else(|_| {
             let cwd = std::env::current_dir().unwrap_or_default();
             cwd.join(build_root)
-        }))
+        })
     } else {
         build_root.to_path_buf()
     };
@@ -69,6 +73,18 @@ pub fn bootstrap_phase(
         .parent()
         .map(|p| p.to_path_buf())
         .unwrap_or_else(|| cache_dir.clone());
+
+    // For the cross-toolchain and temp-tools phases, xgcc and other cross
+    // tools expect to find binutils at /tools/x86_64-lysine-linux-gnu/bin/.
+    // Try to create a symlink /tools -> <bootstrap_base>/tools so that the
+    // hard-coded prefix paths work on the host system. This is a best-effort
+    // operation — the PATH override in cross-gcc's mRNA makes the symlink
+    // optional, so a failure (e.g. no root) is non-fatal.
+    if phase == BootstrapPhase::CrossToolchain {
+        if let Err(e) = ensure_tools_symlink(&bootstrap_base) {
+            warn!("{} — builds will rely on PATH override in mRNA instead", e);
+        }
+    }
 
     let build_profile = profile::profile_for_phase(phase, &bootstrap_base);
     let package_specs = profile::packages_for_phase(phase);
@@ -106,7 +122,7 @@ pub fn bootstrap_phase(
         failures: Vec::new(),
     };
 
-    for spec in &package_specs {
+    for spec in package_specs.iter() {
         let entry = match index.resolve(spec) {
             Some(e) => e,
             None => {
@@ -132,6 +148,10 @@ pub fn bootstrap_phase(
             }
         };
 
+        let pkg_index = report.succeeded + report.failed + report.skipped + 1;
+        let pkg_label = format!("{}-{}", mrna.name, mrna.version);
+        progress.package_started(pkg_index, package_specs.len(), &pkg_label);
+
         info!(
             package = %mrna.name,
             version = %mrna.version,
@@ -146,6 +166,7 @@ pub fn bootstrap_phase(
         config.cxxflags = build_profile.cxxflags.clone();
         config.ldflags = build_profile.ldflags.clone();
         config.cache_dir = cache_dir.to_path_buf();
+        config.clean = clean;
 
         // For cross-toolchain, temp-tools, kernel: install directly into bootstrap_base.
         // --prefix=/tools + DESTDIR=bootstrap_base → bootstrap_base/tools/bin/ld
@@ -153,21 +174,40 @@ pub fn bootstrap_phase(
         let use_direct_install = phase != BootstrapPhase::BaseSystem;
         if use_direct_install {
             config.destdir_override = Some(bootstrap_base.clone());
+            config.skip_pack = true;
         }
 
         let ctx = BuildContext::new(mrna.clone(), config);
 
-        // Extract source if CAS is available — this is a hard requirement
-        if let Some(ref store) = store {
-            source::extract_source(&mrna, store, &ctx.src_dir()).map_err(|e| {
-                CoreError::BuildFailed {
-                    package: mrna.name.clone(),
-                    reason: format!("source extraction failed: {e}"),
-                }
-            })?;
+        // Skip package if all phases already completed (incremental build)
+        if ctx.is_build_complete() {
+            info!(
+                package = %mrna.name,
+                version = %mrna.version,
+                "skipping completed package"
+            );
+            progress.package_finished(&pkg_label, true, std::time::Duration::ZERO);
+            report.skipped += 1;
+            continue;
         }
 
-        match BuildExecutor::build(&ctx) {
+        // Extract source if CAS is available — this is a hard requirement
+        if let Some(ref store) = store {
+            source::extract_source(
+                &mrna,
+                store,
+                &ctx.src_dir(),
+                Some(&|count, filename| progress.on_extract_file(count, filename)),
+            )
+            .map_err(|e| CoreError::BuildFailed {
+                package: mrna.name.clone(),
+                reason: format!("source extraction failed: {e}"),
+            })?;
+
+            progress.extract_done(0);
+        }
+
+        match BuildExecutor::build(&ctx, progress) {
             Ok(result) => {
                 if result.is_ok() {
                     info!(
@@ -185,6 +225,7 @@ pub fn bootstrap_phase(
                         }
                     }
 
+                    progress.package_finished(&pkg_label, true, result.total_duration);
                     report.succeeded += 1;
                 } else {
                     let phase_summary: Vec<String> = result
@@ -199,6 +240,7 @@ pub fn bootstrap_phase(
                         format!("phases failed: {}", phase_summary.join(", "))
                     };
                     warn!(package = %mrna.name, reason = %reason, "build did not complete");
+                    progress.package_finished(&pkg_label, false, result.total_duration);
                     report.failed += 1;
                     report.failures.push(format!("{}: {}", spec, reason));
                     if !continue_on_error {
@@ -211,6 +253,7 @@ pub fn bootstrap_phase(
             }
             Err(e) => {
                 warn!(package = %mrna.name, error = %e, "build error");
+                progress.package_finished(&pkg_label, false, std::time::Duration::ZERO);
                 report.failed += 1;
                 report.failures.push(format!("{}: {e:#}", spec));
                 if !continue_on_error {
@@ -238,6 +281,8 @@ pub fn bootstrap_all(
     cache_dir: &Path,
     lock_file: Option<&Path>,
     continue_on_error: bool,
+    clean: bool,
+    progress: &dyn BuildProgress,
 ) -> Result<BootstrapReport> {
     let phases = [
         BootstrapPhase::CrossToolchain,
@@ -256,6 +301,8 @@ pub fn bootstrap_all(
             cache_dir,
             lock_file,
             continue_on_error,
+            clean,
+            progress,
         )?;
 
         report.total_succeeded += phase_report.succeeded;
@@ -311,6 +358,63 @@ fn copy_dir_recursive(src: &Path, dest: &Path) -> Result<()> {
                 .map_err(|e| CoreError::io(&dest_path, e.to_string()))?;
         }
     }
+
+    Ok(())
+}
+
+/// Ensure `/tools` symlink exists, pointing to `<bootstrap_base>/tools`.
+///
+/// LFS cross-toolchain packages use `--prefix=/tools` at configure time.
+/// GCC's xgcc then looks for the assembler and linker at
+/// `-B/tools/x86_64-lysine-linux-gnu/bin/`. Since the actual tools are
+/// installed into `<bootstrap_base>/tools/`, we create a top-level symlink
+/// so the hard-coded prefix resolves correctly on the host system.
+///
+/// If the symlink already exists and points to the correct target, this is
+/// a no-op. If it points elsewhere, the mismatch is logged as a warning.
+fn ensure_tools_symlink(bootstrap_base: &Path) -> Result<()> {
+    let tools_target = bootstrap_base.join("tools");
+    let tools_link = PathBuf::from("/tools");
+
+    // The target directory must exist (cross-binutils should have been built first)
+    if !tools_target.exists() {
+        std::fs::create_dir_all(&tools_target)
+            .map_err(|e| CoreError::io(&tools_target, e.to_string()))?;
+    }
+
+    if tools_link.exists() {
+        // Symlink or directory already exists — verify it points to the right place
+        if let Ok(resolved) = tools_link.canonicalize() {
+            let expected = tools_target
+                .canonicalize()
+                .unwrap_or_else(|_| tools_target.clone());
+            if resolved == expected {
+                info!(
+                    "/tools symlink already points to {}",
+                    tools_target.display()
+                );
+                return Ok(());
+            }
+            warn!(
+                existing = %resolved.display(),
+                expected = %expected.display(),
+                "/tools exists but points to an unexpected location"
+            );
+        }
+        return Ok(());
+    }
+
+    std::os::unix::fs::symlink(&tools_target, &tools_link).map_err(|e| {
+        CoreError::io(
+            &tools_link,
+            format!(
+                "failed to create /tools -> {} symlink (need root?): {e}",
+                tools_target.display()
+            ),
+        )
+    })?;
+
+    info!("/tools -> {}", tools_target.display());
 
     Ok(())
 }

@@ -102,6 +102,7 @@ jobs:
           name: fetch-log
           path: ${{ env.BOOTSTRAP_BASE }}/cache/
           retention-days: 7
+          overwrite: true
 
   # -------------------------------------------------------
   # Job 2: Cross-toolchain (LFS Chapter 5)
@@ -180,6 +181,7 @@ jobs:
           name: cross-toolchain-tools
           path: ${{ env.BOOTSTRAP_BASE }}/tools/
           retention-days: 3
+          overwrite: true
 
   # -------------------------------------------------------
   # Job 3: Temp-tools (LFS Chapter 6)
@@ -264,6 +266,7 @@ jobs:
           name: temp-tools-tools
           path: ${{ env.BOOTSTRAP_BASE }}/tools/
           retention-days: 3
+          overwrite: true
 
   # -------------------------------------------------------
   # Job 4: Base-system (LFS Chapter 7-8, no chroot)
@@ -360,6 +363,7 @@ jobs:
             ${{ env.BOOTSTRAP_BASE }}/sysroot/usr/lib/
             ${{ env.BOOTSTRAP_BASE }}/sysroot/etc/
           retention-days: 3
+          overwrite: true
 
   # -------------------------------------------------------
   # Job 5: Kernel

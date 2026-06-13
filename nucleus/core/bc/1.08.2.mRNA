@@ -1,0 +1,35 @@
+api-version: 1
+name: bc
+version: 1.08.2
+release: 1
+
+description: Arbitrary precision calculator language
+homepage: https://www.gnu.org/software/bc/
+license: GPL-3.0-or-later
+
+depends:
+  build:
+    - flex
+  runtime:
+    - glibc
+    - ncurses
+    - readline
+
+sources:
+  - url: https://ftp.gnu.org/gnu/bc/bc-1.08.2.tar.gz
+    hash: sha256:ae470fec429775653e042015edc928d07c8c3b2fc59765172a330d3d87785f86
+
+build:
+  prepare: |
+    ./configure --prefix=/usr \
+      --with-readline \
+      --without-libedit
+  compile: |
+    make -j$NPROC
+  check: |
+    make -k check || true
+  install: |
+    make DESTDIR="$DESTDIR" install
+
+maintainer: LysineOS Team <team@lysine-os.org>
+tags: [calculator, core, cli]

@@ -276,10 +276,18 @@ run_qemu_test() {
     phase "Phase 5: QEMU 测试"
 
     local sysroot="$BOOTSTRAP_BASE/sysroot"
-    local kernel="$BUILD_ROOT/linux-kernel-6.18.0/pkg/boot/vmlinuz-6.18.0-lysine"
+    local kernel=""
+    for f in \
+        "$BUILD_ROOT"/linux-kernel-*/pkg/boot/vmlinuz-* \
+        "$BUILD_ROOT"/linux-kernel-*/src/arch/x86/boot/bzImage; do
+        if [[ -f "$f" ]]; then
+            kernel="$f"
+            break
+        fi
+    done
 
-    if [[ ! -f "$kernel" ]]; then
-        warn "Kernel image not found at $kernel"
+    if [[ -z "$kernel" ]]; then
+        warn "Kernel image not found in $BUILD_ROOT (searched vmlinuz-* and bzImage)"
         warn "Skipping QEMU test (kernel phase may not have been built)"
         return 0
     fi

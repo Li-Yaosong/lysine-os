@@ -1,0 +1,60 @@
+api-version: 1
+name: pipewire
+version: 1.6.6
+release: 1
+
+description: Server and user space API to deal with multimedia pipelines
+homepage: https://pipewire.org/
+license: MIT
+
+depends:
+  build:
+    - meson >= 1.6
+    - ninja
+    - pkgconf
+    - gperf
+  runtime:
+    - glibc
+    - systemd
+    - dbus
+
+sources:
+  - url: https://gitlab.freedesktop.org/pipewire/pipewire/-/archive/1.6.6/pipewire-1.6.6.tar.bz2
+    hash: sha256:2fdf073869bd171d29a92dc6857979864b53e3dc1a79ac76c15db78e5b12d9f8
+
+build:
+  prepare: |
+    CFLAGS="$CFLAGS -Wno-error=discarded-qualifiers" \
+    meson setup build \
+      --prefix=/usr \
+      --buildtype=release \
+      -D session-managers="[]" \
+      -D docs=disabled \
+      -D man=disabled \
+      -D systemd=enabled \
+      -D udev=enabled
+  compile: |
+    ninja -C build -j$NPROC
+  install: |
+    DESTDIR="$DESTDIR" meson install -C build --no-rebuild
+
+outputs:
+  main:
+    description: PipeWire server and tools
+  lib:
+    description: PipeWire runtime libraries
+    files:
+      - /usr/lib/libpipewire-*.so*
+      - /usr/lib/pipewire-*/
+      - /usr/lib/spa-*/
+  dev:
+    description: PipeWire development files
+    files:
+      - /usr/include/pipewire-*/
+      - /usr/include/spa-*/
+      - /usr/lib/libpipewire-*.so
+      - /usr/lib/pkgconfig/libpipewire-*.pc
+      - /usr/lib/pkgconfig/libspa-*.pc
+
+maintainer: LysineOS Team <team@lysine-os.org>
+tags: [audio, video, multimedia, desktop]

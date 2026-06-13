@@ -435,3 +435,52 @@ jobs:
           echo "=== Kernel image verification ==="
           find ${{ env.BOOTSTRAP_BASE }}/build/linux-kernel-* -name "vmlinuz*" -o -name "bzImage" 2>/dev/null || true
           find ${{ env.BOOTSTRAP_BASE }}/sysroot/boot -name "vmlinuz*" 2>/dev/null || true
+
+      - name: QEMU boot test
+        if: github.event_name == 'push'
+        continue-on-error: true
+        run: |
+          echo "=== QEMU Boot Test ==="
+          sudo apt-get install -y qemu-system-x86
+
+          KERNEL=""
+          for f in \
+            ${{ env.BOOTSTRAP_BASE }}/build/linux-kernel-*/pkg/boot/vmlinuz-* \
+            ${{ env.BOOTSTRAP_BASE }}/build/linux-kernel-*/src/arch/x86/boot/bzImage; do
+            if [[ -f "$f" ]]; then
+              KERNEL="$f"
+              break
+            fi
+          done
+
+          if [[ -z "$KERNEL" ]]; then
+            echo "No kernel image found, skipping boot test"
+            exit 0
+          fi
+
+          echo "Kernel: $KERNEL"
+
+          INITRD_DIR=$(mktemp -d)
+          mkdir -p "$INITRD_DIR"/{bin,sbin,proc,sys,dev,etc,usr/bin,usr/sbin,tmp}
+
+          printf '#!/bin/sh\nexport PATH=/bin:/usr/bin:/sbin:/usr/sbin\necho "LysineOS CI Boot Test"\necho "Kernel: $(uname -r)"\necho "Arch:   $(uname -m)"\necho ""\necho "Boot Test PASSED"\npoweroff -f\n' > "$INITRD_DIR/init"
+          chmod +x "$INITRD_DIR/init"
+
+          INITRD_PATH="${{ env.BOOTSTRAP_BASE }}/ci-test-initrd.cpio.gz"
+          (cd "$INITRD_DIR" && find . | cpio -o -H newc 2>/dev/null | gzip -9) > "$INITRD_PATH"
+          rm -rf "$INITRD_DIR"
+
+          timeout 120 qemu-system-x86_64 \
+            -m 512M \
+            -kernel "$KERNEL" \
+            -initrd "$INITRD_PATH" \
+            -append "console=ttyS0 panic=1 rdinit=/init" \
+            -nographic \
+            -no-reboot \
+            2>&1 | tee /tmp/qemu-boot-test.log || true
+
+          if grep -q "Boot Test PASSED" /tmp/qemu-boot-test.log; then
+            echo "QEMU boot test PASSED"
+          else
+            echo "QEMU boot test FAILED or timed out (non-blocking)"
+          fi

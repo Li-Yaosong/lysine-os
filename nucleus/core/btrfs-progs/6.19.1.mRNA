@@ -1,0 +1,55 @@
+api-version: 1
+name: btrfs-progs
+version: 6.19.1
+release: 1
+
+description: Btrfs filesystem utilities
+homepage: https://btrfs.readthedocs.io/
+license: GPL-2.0-only
+
+depends:
+  build:
+    - util-linux
+  runtime:
+    - glibc
+    - zlib
+    - zstd
+    - lz4
+
+sources:
+  - url: https://www.kernel.org/pub/linux/kernel/people/kdave/btrfs-progs/btrfs-progs-v6.19.1.tar.xz
+    hash: sha256:bb27e1ec54e7c3c0b7b2e596f853a73c07a3d72f21bc94042073c24dbf045796
+  - url: https://www.kernel.org/pub/linux/kernel/people/kdave/btrfs-progs/btrfs-progs-v6.19.1.tar.sign
+    signature: gpg
+    key-id: F2B41200C54EFB30380C1756C565D5F9D76D583B
+
+build:
+  prepare: |
+    ./configure --prefix=/usr \
+      --disable-static \
+      --disable-documentation
+  compile: |
+    make -j$NPROC
+  install: |
+    make DESTDIR="$DESTDIR" install
+
+outputs:
+  main:
+    description: Btrfs filesystem utilities
+  lib:
+    description: Btrfs runtime libraries
+    files:
+      - /usr/lib/libbtrfs.so*
+      - /usr/lib/libbtrfsutil.so*
+  dev:
+    description: Btrfs development files
+    files:
+      - /usr/include/btrfs/**
+      - /usr/lib/libbtrfs.a
+      - /usr/lib/libbtrfsutil.a
+      - /usr/lib/libbtrfs.so
+      - /usr/lib/libbtrfsutil.so
+      - /usr/lib/pkgconfig/libbtrfsutil.pc
+
+maintainer: LysineOS Team <team@lysine-os.org>
+tags: [filesystem, btrfs, core]

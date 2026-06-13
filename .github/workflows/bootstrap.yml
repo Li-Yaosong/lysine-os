@@ -35,6 +35,10 @@ env:
   RUST_VERSION: "1.90"
   BOOTSTRAP_BASE: /var/ribosome/bootstrap
 
+concurrency:
+  group: bootstrap-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   # -------------------------------------------------------
   # Job 1: Fetch all source tarballs
@@ -42,6 +46,7 @@ jobs:
   fetch:
     name: Fetch Sources
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     if: |
       github.event_name != 'workflow_dispatch' ||
       inputs.phase == 'all' ||
@@ -83,10 +88,10 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ env.BOOTSTRAP_BASE }}/cache
-          key: vacuole-sources-v2-${{ hashFiles('nucleus/**/*.mRNA') }}-${{ hashFiles('ribosome/**/Cargo.lock') }}
+          key: vacuole-sources-v3-${{ hashFiles('nucleus/**/*.mRNA') }}
           restore-keys: |
-            vacuole-sources-v2-${{ hashFiles('nucleus/**/*.mRNA') }}-
-            vacuole-sources-v2-
+            vacuole-sources-v3-${{ hashFiles('nucleus/**/*.mRNA') }}-
+            vacuole-sources-v3-
 
       - name: Fetch all sources
         env:
@@ -94,15 +99,6 @@ jobs:
         run: |
           ./ribosome/target/release/ribosome-cli fetch nucleus/core/ \
             --cache-dir ${{ env.BOOTSTRAP_BASE }}/cache
-
-      - name: Upload fetch log
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: fetch-log
-          path: ${{ env.BOOTSTRAP_BASE }}/cache/
-          retention-days: 7
-          overwrite: true
 
   # -------------------------------------------------------
   # Job 2: Cross-toolchain (LFS Chapter 5)
@@ -153,10 +149,10 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ env.BOOTSTRAP_BASE }}/cache
-          key: vacuole-sources-v2-${{ hashFiles('nucleus/**/*.mRNA') }}-${{ hashFiles('ribosome/**/Cargo.lock') }}
+          key: vacuole-sources-v3-${{ hashFiles('nucleus/**/*.mRNA') }}
           restore-keys: |
-            vacuole-sources-v2-${{ hashFiles('nucleus/**/*.mRNA') }}-
-            vacuole-sources-v2-
+            vacuole-sources-v3-${{ hashFiles('nucleus/**/*.mRNA') }}-
+            vacuole-sources-v3-
           fail-on-cache-miss: true
 
       - name: Bootstrap cross-toolchain
@@ -232,10 +228,10 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ env.BOOTSTRAP_BASE }}/cache
-          key: vacuole-sources-v2-${{ hashFiles('nucleus/**/*.mRNA') }}-${{ hashFiles('ribosome/**/Cargo.lock') }}
+          key: vacuole-sources-v3-${{ hashFiles('nucleus/**/*.mRNA') }}
           restore-keys: |
-            vacuole-sources-v2-${{ hashFiles('nucleus/**/*.mRNA') }}-
-            vacuole-sources-v2-
+            vacuole-sources-v3-${{ hashFiles('nucleus/**/*.mRNA') }}-
+            vacuole-sources-v3-
           fail-on-cache-miss: true
 
       - name: Download cross-toolchain artifact
@@ -246,6 +242,7 @@ jobs:
 
       - name: Bootstrap temp-tools
         run: |
+          export PATH="${{ env.BOOTSTRAP_BASE }}/tools/bin:$PATH"
           ./ribosome/target/release/ribosome-cli bootstrap \
             --phase temp-tools \
             --nucleus-dir nucleus/core \
@@ -317,10 +314,10 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ env.BOOTSTRAP_BASE }}/cache
-          key: vacuole-sources-v2-${{ hashFiles('nucleus/**/*.mRNA') }}-${{ hashFiles('ribosome/**/Cargo.lock') }}
+          key: vacuole-sources-v3-${{ hashFiles('nucleus/**/*.mRNA') }}
           restore-keys: |
-            vacuole-sources-v2-${{ hashFiles('nucleus/**/*.mRNA') }}-
-            vacuole-sources-v2-
+            vacuole-sources-v3-${{ hashFiles('nucleus/**/*.mRNA') }}-
+            vacuole-sources-v3-
           fail-on-cache-miss: true
 
       - name: Download temp-tools artifact
@@ -331,6 +328,7 @@ jobs:
 
       - name: Bootstrap base-system
         run: |
+          export PATH="${{ env.BOOTSTRAP_BASE }}/tools/bin:$PATH"
           ./ribosome/target/release/ribosome-cli bootstrap \
             --phase base-system \
             --nucleus-dir nucleus/core \
@@ -345,7 +343,7 @@ jobs:
           ls -la ${{ env.BOOTSTRAP_BASE }}/sysroot/ || true
           echo ""
           echo "=== Key files check ==="
-          for f in usr/bin/bash usr/bin/coreutils usr/lib/libc.so usr/bin/systemd; do
+          for f in usr/bin/bash usr/bin/ls usr/lib/libc.so.6 usr/lib/systemd/systemd; do
             if [[ -e ${{ env.BOOTSTRAP_BASE }}/sysroot/$f ]]; then
               echo "  [OK] /$f"
             else
@@ -414,10 +412,10 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ env.BOOTSTRAP_BASE }}/cache
-          key: vacuole-sources-v2-${{ hashFiles('nucleus/**/*.mRNA') }}-${{ hashFiles('ribosome/**/Cargo.lock') }}
+          key: vacuole-sources-v3-${{ hashFiles('nucleus/**/*.mRNA') }}
           restore-keys: |
-            vacuole-sources-v2-${{ hashFiles('nucleus/**/*.mRNA') }}-
-            vacuole-sources-v2-
+            vacuole-sources-v3-${{ hashFiles('nucleus/**/*.mRNA') }}-
+            vacuole-sources-v3-
           fail-on-cache-miss: true
 
       - name: Download temp-tools artifact
@@ -428,6 +426,7 @@ jobs:
 
       - name: Bootstrap kernel
         run: |
+          export PATH="${{ env.BOOTSTRAP_BASE }}/tools/bin:$PATH"
           ./ribosome/target/release/ribosome-cli bootstrap \
             --phase kernel \
             --nucleus-dir nucleus/core \
@@ -441,7 +440,7 @@ jobs:
           find ${{ env.BOOTSTRAP_BASE }}/sysroot/boot -name "vmlinuz*" 2>/dev/null || true
 
       - name: QEMU boot test
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' || github.event_name == 'pull_request'
         continue-on-error: true
         run: |
           echo "=== QEMU Boot Test ==="

@@ -1,0 +1,50 @@
+name: Setup Ribosome
+description: Checkout, install build deps + Rust, cache cargo, build ribosome, prepare bootstrap dirs
+
+inputs:
+  extra-apt-packages:
+    description: Extra apt packages to install (space-separated)
+    required: false
+    default: ''
+
+runs:
+  using: composite
+  steps:
+    - name: Install build dependencies
+      shell: bash
+      env:
+        EXTRA_APT: ${{ inputs.extra-apt-packages }}
+      run: |
+        sudo apt-get update
+        pkgs="build-essential texinfo bison flex"
+        if [[ -n "$EXTRA_APT" ]]; then
+          pkgs="$pkgs $EXTRA_APT"
+        fi
+        sudo apt-get install -y $pkgs
+
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        toolchain: ${{ env.RUST_VERSION }}
+
+    - name: Cache cargo registry
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          ribosome/target
+        key: bootstrap-cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          bootstrap-cargo-${{ runner.os }}-
+
+    - name: Build ribosome (release)
+      working-directory: ribosome
+      shell: bash
+      run: cargo build --release --bin ribosome-cli
+
+    - name: Setup bootstrap directories
+      shell: bash
+      run: |
+        sudo mkdir -p ${{ env.BOOTSTRAP_BASE }}/{build,cache,tools,sysroot}
+        sudo chown -R $USER:$USER ${{ env.BOOTSTRAP_BASE }}

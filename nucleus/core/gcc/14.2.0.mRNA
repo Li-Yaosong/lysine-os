@@ -58,16 +58,20 @@ build:
     ln -sf gmp-6.3.0 $SRCDIR/gmp
     ln -sf mpfr-4.2.1 $SRCDIR/mpfr
     ln -sf mpc-1.3.1 $SRCDIR/mpc
+    mkdir -p "$BUILDDIR" && cd "$BUILDDIR"
     $SRCDIR/configure --prefix=/usr \
       --enable-languages=c,c++,fortran,objc \
       --disable-multilib \
       --disable-werror \
       --enable-threads=posix
   compile: |
+    cd "$BUILDDIR"
     make -j$(nproc)
   check: |
+    cd "$BUILDDIR"
     make -j$(nproc) -k check || true
   install: |
+    cd "$BUILDDIR"
     make DESTDIR="$DESTDIR" install
     rm -rf "$DESTDIR/usr/lib/gcc"/*/{include-fixed/bits,install-tools}
 

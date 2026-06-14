@@ -14,7 +14,7 @@ sources:
 build:
   prepare: |
     export PATH="$DESTDIR/tools/bin:$DESTDIR/tools/x86_64-lysine-linux-gnu/bin:$PATH"
-    export LD_LIBRARY_PATH="$DESTDIR/tools/x86_64-pc-linux-gnu/x86_64-lysine-linux-gnu/lib"
+    mkdir -p "$BUILDDIR" && cd "$BUILDDIR"
     $SRCDIR/libstdc++-v3/configure --prefix=/tools \
       --host=x86_64-lysine-linux-gnu \
       --disable-multilib \
@@ -23,11 +23,11 @@ build:
       --with-gxx-include-dir=/tools/x86_64-lysine-linux-gnu/include/c++/14.2.0
   compile: |
     export PATH="$DESTDIR/tools/bin:$DESTDIR/tools/x86_64-lysine-linux-gnu/bin:$PATH"
-    export LD_LIBRARY_PATH="$DESTDIR/tools/x86_64-pc-linux-gnu/x86_64-lysine-linux-gnu/lib"
+    cd "$BUILDDIR"
     make -j$NPROC
   install: |
     export PATH="$DESTDIR/tools/bin:$DESTDIR/tools/x86_64-lysine-linux-gnu/bin:$PATH"
-    export LD_LIBRARY_PATH="$DESTDIR/tools/x86_64-pc-linux-gnu/x86_64-lysine-linux-gnu/lib"
+    cd "$BUILDDIR"
     make DESTDIR="$DESTDIR" install
 
 tags:

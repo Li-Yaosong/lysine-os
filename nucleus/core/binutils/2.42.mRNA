@@ -31,6 +31,7 @@ sources:
 
 build:
   prepare: |
+    mkdir -p "$BUILDDIR" && cd "$BUILDDIR"
     $SRCDIR/configure --prefix=/usr \
       --enable-gold \
       --enable-ld=default \
@@ -38,6 +39,8 @@ build:
       --enable-shared \
       --disable-werror
   compile: |
+    cd "$BUILDDIR"
     make -j$(nproc)
   install: |
+    cd "$BUILDDIR"
     make DESTDIR="$DESTDIR" install

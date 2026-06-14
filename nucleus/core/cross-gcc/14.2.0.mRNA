@@ -22,16 +22,10 @@ patches:
 
 build:
   prepare: |
+    export PATH="$DESTDIR/tools/bin:$DESTDIR/tools/x86_64-lysine-linux-gnu/bin:$PATH"
     ln -sf gmp-6.3.0 $SRCDIR/gmp
     ln -sf mpfr-4.2.1 $SRCDIR/mpfr
     ln -sf mpc-1.3.1 $SRCDIR/mpc
-    # cross-binutils installs its shared libs across two directories:
-    #   tools/lib/                                          -> libsframe, libctf, ...
-    #   tools/x86_64-pc-linux-gnu/x86_64-lysine-linux-gnu/lib/ -> libbfd, libopcodes
-    # To avoid host tools accidentally loading a target-arch libc.so.6 later
-    # installed into tools/lib by cross-glibc, we keep an extra copy of
-    # libsframe in the libbfd directory and reference only that path.
-    export LD_LIBRARY_PATH="$DESTDIR/tools/x86_64-pc-linux-gnu/x86_64-lysine-linux-gnu/lib"
     $SRCDIR/configure --prefix=/tools \
       --target=x86_64-lysine-linux-gnu \
       --with-glibc-version=2.43 \
@@ -51,10 +45,14 @@ build:
       --disable-libatomic \
       --enable-languages=c,c++
   compile: |
-    export LD_LIBRARY_PATH="$DESTDIR/tools/x86_64-pc-linux-gnu/x86_64-lysine-linux-gnu/lib"
+    export PATH="$DESTDIR/tools/bin:$DESTDIR/tools/x86_64-lysine-linux-gnu/bin:$PATH"
+    cd "$SRCDIR"
+    make -j$NPROC all-gcc
+    make -j$NPROC all-target-libgcc
     make -j$NPROC
   install: |
-    export LD_LIBRARY_PATH="$DESTDIR/tools/x86_64-pc-linux-gnu/x86_64-lysine-linux-gnu/lib"
+    export PATH="$DESTDIR/tools/bin:$DESTDIR/tools/x86_64-lysine-linux-gnu/bin:$PATH"
+    cd "$SRCDIR"
     make DESTDIR="$DESTDIR" install
 
 tags:

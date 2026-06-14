@@ -20,22 +20,13 @@ build:
       --enable-gold \
       --enable-ld=default \
       --enable-plugins \
-      --enable-shared \
+      --disable-shared \
       --disable-werror \
       --enable-64-bit-bfd
   compile: |
     make -j$NPROC
   install: |
     make DESTDIR="$DESTDIR" install
-    # Copy cross-binutils shared libs (libsframe, libctf) into the same
-    # directory as libbfd so that LD_LIBRARY_PATH can reference only that
-    # single path without pulling in a target-arch libc.so.6 from tools/lib
-    # later installed by cross-glibc.
-    _bfd_dir="$DESTDIR/tools/x86_64-pc-linux-gnu/x86_64-lysine-linux-gnu/lib"
-    _lib_dir="$DESTDIR/tools/lib"
-    for f in libsframe.so* libsframe.so*.* libctf.so* libctf-nobfd.so*; do
-      test -e "$_lib_dir/$f" && cp -a "$_lib_dir/$f" "$_bfd_dir/"
-    done || true
 
 tags:
   - cross-toolchain

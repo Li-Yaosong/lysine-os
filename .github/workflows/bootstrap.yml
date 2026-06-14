@@ -136,7 +136,7 @@ jobs:
     name: "Phase: temp-tools"
     needs: cross-toolchain
     runs-on: ubuntu-latest
-    timeout-minutes: 90  # ~40 packages, many are perl/python
+    timeout-minutes: 180  # ~16 packages incl. native gcc (no bootstrap)
     if: |
       github.event_name != 'workflow_dispatch' ||
       inputs.phase == 'all' ||

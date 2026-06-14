@@ -63,6 +63,7 @@ build:
       --enable-languages=c,c++,fortran,objc \
       --disable-multilib \
       --disable-werror \
+      --disable-bootstrap \
       --enable-threads=posix
   compile: |
     cd "$BUILDDIR"

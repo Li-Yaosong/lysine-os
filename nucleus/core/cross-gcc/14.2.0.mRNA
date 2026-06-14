@@ -26,7 +26,10 @@ build:
     ln -sf gmp-6.3.0 $SRCDIR/gmp
     ln -sf mpfr-4.2.1 $SRCDIR/mpfr
     ln -sf mpc-1.3.1 $SRCDIR/mpc
+    mkdir -p "$BUILDDIR" && cd "$BUILDDIR"
     $SRCDIR/configure --prefix=/tools \
+      --build=x86_64-pc-linux-gnu \
+      --host=x86_64-pc-linux-gnu \
       --target=x86_64-lysine-linux-gnu \
       --with-glibc-version=2.43 \
       --with-sysroot=/ \
@@ -46,13 +49,11 @@ build:
       --enable-languages=c,c++
   compile: |
     export PATH="$DESTDIR/tools/bin:$DESTDIR/tools/x86_64-lysine-linux-gnu/bin:$PATH"
-    cd "$SRCDIR"
-    make -j$NPROC all-gcc
-    make -j$NPROC all-target-libgcc
+    cd "$BUILDDIR"
     make -j$NPROC
   install: |
     export PATH="$DESTDIR/tools/bin:$DESTDIR/tools/x86_64-lysine-linux-gnu/bin:$PATH"
-    cd "$SRCDIR"
+    cd "$BUILDDIR"
     make DESTDIR="$DESTDIR" install
 
 tags:

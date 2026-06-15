@@ -14,8 +14,8 @@ sources:
 build:
   install: |
     install -d "$DESTDIR/etc"
-    install -m 644 services "$DESTDIR/etc/services"
-    install -m 644 protocols "$DESTDIR/etc/protocols"
+    install -m 644 "$SRCDIR/services" "$DESTDIR/etc/services"
+    install -m 644 "$SRCDIR/protocols" "$DESTDIR/etc/protocols"
 
 maintainer: LysineOS Team <team@lysine-os.org>
 tags: [network, core]

@@ -64,6 +64,11 @@ pub struct BuildConfig {
     pub skip_pack: bool,
     /// Force rebuild even if phase markers exist.
     pub clean: bool,
+    /// Extra environment variables injected into every build phase.
+    ///
+    /// Used by bootstrap to expose sysroot paths (e.g. PKG_CONFIG_PATH,
+    /// PATH) so packages can find dependencies installed by earlier phases.
+    pub extra_env: Vec<(String, String)>,
 }
 
 impl BuildConfig {
@@ -85,6 +90,7 @@ impl BuildConfig {
             destdir_override: None,
             skip_pack: false,
             clean: false,
+            extra_env: Vec::new(),
         }
     }
 }
@@ -208,23 +214,36 @@ impl BuildContext {
     }
 
     /// Build the shell environment variables injected into every build phase.
-    pub fn env_vars(&self) -> Vec<(&'static str, String)> {
-        let mut vars = vec![
-            ("DESTDIR", self.dest_dir().to_string_lossy().into_owned()),
-            ("SRCDIR", self.src_dir().to_string_lossy().into_owned()),
-            ("BUILDDIR", self.build_dir().to_string_lossy().into_owned()),
-            ("NPROC", self.config.jobs.to_string()),
-            ("ARCH", self.config.arch.clone()),
-            ("PREFIX", self.config.prefix.clone()),
+    pub fn env_vars(&self) -> Vec<(String, String)> {
+        let mut vars: Vec<(String, String)> = vec![
+            (
+                "DESTDIR".to_string(),
+                self.dest_dir().to_string_lossy().into_owned(),
+            ),
+            (
+                "SRCDIR".to_string(),
+                self.src_dir().to_string_lossy().into_owned(),
+            ),
+            (
+                "BUILDDIR".to_string(),
+                self.build_dir().to_string_lossy().into_owned(),
+            ),
+            ("NPROC".to_string(), self.config.jobs.to_string()),
+            ("ARCH".to_string(), self.config.arch.clone()),
+            ("PREFIX".to_string(), self.config.prefix.clone()),
         ];
         if !self.config.cflags.is_empty() {
-            vars.push(("CFLAGS", self.config.cflags.clone()));
+            vars.push(("CFLAGS".to_string(), self.config.cflags.clone()));
         }
         if !self.config.cxxflags.is_empty() {
-            vars.push(("CXXFLAGS", self.config.cxxflags.clone()));
+            vars.push(("CXXFLAGS".to_string(), self.config.cxxflags.clone()));
         }
         if !self.config.ldflags.is_empty() {
-            vars.push(("LDFLAGS", self.config.ldflags.clone()));
+            vars.push(("LDFLAGS".to_string(), self.config.ldflags.clone()));
+        }
+        // Extra environment variables (e.g. PKG_CONFIG_PATH, PATH overrides)
+        for (k, v) in &self.config.extra_env {
+            vars.push((k.clone(), v.clone()));
         }
         vars
     }

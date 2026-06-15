@@ -28,7 +28,17 @@ sources:
 build:
   prepare: |
     mkdir -p "$BUILDDIR" && cd "$BUILDDIR"
-    $SRCDIR/configure --prefix=/usr \
+    # Locate configure — glibc tarballs may hoist differently
+    if [[ -x "$SRCDIR/configure" ]]; then
+      CFG="$SRCDIR/configure"
+    elif [[ -x "$SRCDIR/glibc-2.43/configure" ]]; then
+      CFG="$SRCDIR/glibc-2.43/configure"
+    else
+      echo "ERROR: configure not found under $SRCDIR" >&2
+      ls -la "$SRCDIR" | head -20
+      exit 1
+    fi
+    "$CFG" --prefix=/usr \
       --disable-werror \
       --enable-kernel=4.19 \
       --enable-stack-protector=strong \

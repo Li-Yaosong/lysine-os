@@ -14,7 +14,7 @@ sources:
     hash: sha256:c0d84d797f06b732fc573d0b798ae83128c2bc33052057f05b560ec6bcbfa03d
 build:
   prepare: |
-    ./configure --prefix=/usr --with-pam --with-env-editor
+    ./configure --prefix=/usr --without-pam --with-env-editor
   compile: |
     make -j$NPROC
   install: |

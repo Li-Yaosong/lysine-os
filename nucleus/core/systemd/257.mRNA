@@ -44,19 +44,23 @@ sources:
 
 build:
   prepare: |
-    mkdir -v build && cd build
+    cd "$SRCDIR"
+    mkdir -pv build && cd build
     meson setup .. \
       --prefix=/usr \
       --buildtype=release \
       -Dmode=release \
       -Ddev-kvm-mode=0660
   compile: |
+    cd "$SRCDIR/build"
     ninja -j$(nproc)
   install: |
+    cd "$SRCDIR/build"
     DESTDIR="$DESTDIR" ninja install
 
 post-install: |
-  systemctl preset-all
+  # systemctl preset-all requires a running systemd; skip during bootstrap
+  echo "skip systemctl preset-all during bootstrap"
 
 maintainer: LysineOS Team <team@lysine-os.org>
 tags:

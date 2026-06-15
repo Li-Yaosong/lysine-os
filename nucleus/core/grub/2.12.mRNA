@@ -15,8 +15,14 @@ sources:
     hash: sha256:f3c97391f7c4eaa677a78e090c7e97e6dc47b16f655f04683ebd37bef7fe0faa
 build:
   prepare: |
+    cd "$SRCDIR"
+    # grub release tarballs ship without this placeholder; create it so the
+    # build does not abort trying to include it.
+    touch grub-core/extra_deps.lst
     ./configure --prefix=/usr --sysconfdir=/etc
   compile: |
+    cd "$SRCDIR"
     make -j$NPROC
   install: |
+    cd "$SRCDIR"
     make DESTDIR="$DESTDIR" install

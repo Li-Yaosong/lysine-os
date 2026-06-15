@@ -27,15 +27,19 @@ sources:
 
 build:
   prepare: |
+    cd "$SRCDIR"
     ./config --prefix=/usr \
       --openssldir=/etc/ssl \
       --libdir=lib \
       shared
   compile: |
+    cd "$SRCDIR"
     make -j$(nproc)
   check: |
+    cd "$SRCDIR"
     make -j$(nproc) test || true
   install: |
+    cd "$SRCDIR"
     make DESTDIR="$DESTDIR" install
 
 post-install: |

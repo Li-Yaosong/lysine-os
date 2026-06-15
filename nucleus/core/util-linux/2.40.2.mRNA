@@ -17,7 +17,7 @@ sources:
     hash: sha256:d78b37a66f5922d70edf3bdfb01a6b33d34ed3c3cafd6628203b2a2b67c8e8b3
 build:
   prepare: |
-    ./configure --prefix=/usr --disable-static --without-python
+    ./configure --prefix=/usr --disable-static --without-python --disable-wall
   compile: |
     make -j$NPROC
   install: |

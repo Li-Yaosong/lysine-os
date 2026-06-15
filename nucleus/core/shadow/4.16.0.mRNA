@@ -17,7 +17,10 @@ sources:
     hash: sha256:b78e3921a95d53282a38e90628880624736bf6235e36eea50c50835f59a3530b
 build:
   prepare: |
-    ./configure --prefix=/usr --with-group-name-max-length=32
+    ./configure --prefix=/usr --with-group-name-max-length=32 \
+      --without-libbsd \
+      --without-skey \
+      --without-su
   compile: |
     make -j$NPROC
   install: |

@@ -15,6 +15,10 @@ build:
   prepare: |
     echo "prepare done"
   compile: |
-    make -j$NPROC PREFIX=/usr
+    # zstd Makefile lives in the source root; cd there explicitly
+    cd "$SRCDIR"
+    make -j$NPROC PREFIX=/usr lib-mt
+    make -j$NPROC PREFIX=/usr zstd
   install: |
+    cd "$SRCDIR"
     make PREFIX="$DESTDIR/usr" install

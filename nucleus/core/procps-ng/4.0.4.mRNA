@@ -14,6 +14,7 @@ sources:
     hash: sha256:3214fab0f817d169f2c117842ba635bafb1cd6090273e311a8b5c6fc393ddb9d
 build:
   prepare: |
+    if [[ -x ./autogen.sh ]]; then ./autogen.sh; else autoreconf -fi; fi
     ./configure --prefix=/usr --disable-static
   compile: |
     make -j$NPROC

@@ -14,8 +14,11 @@ sources:
     hash: sha256:5a33dc047fd47284bca4bb10c13cfe7896377ae3d01cb81a05d406025d99e0d1
 build:
   prepare: |
+    cd "$SRCDIR"
     ./configure --prefix=/usr --with-root-prefix=""
   compile: |
+    cd "$SRCDIR"
     make -j$NPROC
   install: |
+    cd "$SRCDIR"
     make DESTDIR="$DESTDIR" install install-libs

@@ -600,7 +600,7 @@ build:
         let config = BuildConfig::new("/tmp/ribosome-test");
         let ctx = BuildContext::new(mrna, config);
         let vars = ctx.env_vars();
-        let keys: Vec<&str> = vars.iter().map(|(k, _)| *k).collect();
+        let keys: Vec<&str> = vars.iter().map(|(k, _)| k.as_str()).collect();
         assert!(keys.contains(&"DESTDIR"));
         assert!(keys.contains(&"SRCDIR"));
         assert!(keys.contains(&"BUILDDIR"));

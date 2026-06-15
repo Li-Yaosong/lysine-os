@@ -175,6 +175,64 @@ pub fn bootstrap_phase(
         if use_direct_install {
             config.destdir_override = Some(bootstrap_base.clone());
             config.skip_pack = true;
+        } else {
+            // Base-system builds on the host without chroot. Each package's
+            // DESTDIR is isolated, but configure/make need to find headers and
+            // libraries installed by previously-built packages (merged into
+            // sysroot). Inject sysroot paths so dependency resolution works.
+            let sysroot = &build_profile.dest_root;
+            let sysroot_inc = sysroot.join("usr").join("include");
+            let sysroot_lib = sysroot.join("usr").join("lib");
+            if sysroot_inc.exists() {
+                let prefix = format!("-isystem {}", sysroot_inc.display());
+                if config.cflags.is_empty() {
+                    config.cflags = prefix.clone();
+                } else {
+                    config.cflags = format!("{} {}", prefix, config.cflags);
+                }
+                if config.cxxflags.is_empty() {
+                    config.cxxflags = prefix.clone();
+                } else {
+                    config.cxxflags = format!("{} {}", prefix, config.cxxflags);
+                }
+            }
+            if sysroot_lib.exists() {
+                let lib_flag = format!("-L{}", sysroot_lib.display());
+                if config.ldflags.is_empty() {
+                    config.ldflags = lib_flag;
+                } else {
+                    config.ldflags = format!("{} {}", config.ldflags, lib_flag);
+                }
+                // Expose sysroot .pc files to pkg-config
+                let pc_dir = sysroot_lib.join("pkgconfig");
+                if pc_dir.exists() {
+                    config.extra_env.push((
+                        "PKG_CONFIG_PATH".to_string(),
+                        pc_dir.to_string_lossy().into_owned(),
+                    ));
+                }
+                // Help the dynamic linker find sysroot libraries at build time
+                config.extra_env.push((
+                    "LIBRARY_PATH".to_string(),
+                    sysroot_lib.to_string_lossy().into_owned(),
+                ));
+                config.extra_env.push((
+                    "LD_LIBRARY_PATH".to_string(),
+                    sysroot_lib.to_string_lossy().into_owned(),
+                ));
+            }
+            // Prepend sysroot/usr/bin to PATH so build tools installed by earlier
+            // packages (meson, ninja, etc.) are discoverable by later packages.
+            let sysroot_bin = sysroot.join("usr").join("bin");
+            if sysroot_bin.exists() {
+                let current_path = std::env::var("PATH").unwrap_or_default();
+                let new_path = if current_path.is_empty() {
+                    sysroot_bin.to_string_lossy().into_owned()
+                } else {
+                    format!("{}:{}", sysroot_bin.display(), current_path)
+                };
+                config.extra_env.push(("PATH".to_string(), new_path));
+            }
         }
 
         let ctx = BuildContext::new(mrna.clone(), config);

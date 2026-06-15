@@ -13,8 +13,11 @@ sources:
     hash: sha256:f2e97b0ab7ce293681ab701915766190d607a1dba7fae8a718138150b700a70b
 build:
   prepare: |
+    cd "$SRCDIR"
     ./configure --prefix=/usr --disable-static
   compile: |
+    cd "$SRCDIR"
     make -j$NPROC
   install: |
+    cd "$SRCDIR"
     make DESTDIR="$DESTDIR" install
